@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -33,7 +34,7 @@ function JotHeader({ title }: { title: string }) {
 
 export default function JotScreen() {
   const { jotId } = useLocalSearchParams<{ jotId: string }>();
-  const { addEntry, jots, toggleEntry, updateDocument } = useJots();
+  const { addEntry, isLoading, jots, toggleEntry, updateDocument } = useJots();
   const [draft, setDraft] = useState('');
   const scrollViewRef = useRef<ScrollView>(null);
   const jot = jots.find((candidate) => candidate.id === jotId);
@@ -42,6 +43,17 @@ export default function JotScreen() {
     if (!jot || !draft.trim()) return;
     addEntry(jot.id, draft);
     setDraft('');
+  }
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.screen}>
+        <View style={styles.loadingState}>
+          <ActivityIndicator color="#25634D" size="large" />
+          <Text style={styles.loadingLabel}>Loading jot…</Text>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   if (!jot) {
@@ -335,6 +347,8 @@ const styles = StyleSheet.create({
   addButtonDisabled: { backgroundColor: '#B9C4BE' },
   addButtonLabel: { color: '#FFFFFF', fontSize: 25, fontWeight: '700', lineHeight: 27 },
   pressed: { opacity: 0.62 },
+  loadingState: { alignItems: 'center', flex: 1, gap: 12, justifyContent: 'center' },
+  loadingLabel: { color: '#6F7C75', fontSize: 14 },
   missingState: {
     alignItems: 'center',
     flex: 1,

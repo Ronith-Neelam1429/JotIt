@@ -1,6 +1,7 @@
 import { Link, router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -45,7 +46,7 @@ function getJotMeta(jot: Jot) {
 
 export default function HomeScreen() {
   const { user } = useAuth();
-  const { createJot: createStoredJot, jots } = useJots();
+  const { createJot: createStoredJot, isLoading, jots, syncError } = useJots();
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [jotTitle, setJotTitle] = useState('');
   const [selectedKind, setSelectedKind] = useState<JotKind | null>(null);
@@ -105,7 +106,19 @@ export default function HomeScreen() {
           </Text>
         </View>
 
-        {jots.length ? (
+        {syncError ? (
+          <View style={styles.syncError}>
+            <Text style={styles.syncErrorTitle}>Couldn’t sync your jots</Text>
+            <Text style={styles.syncErrorDescription}>{syncError}</Text>
+          </View>
+        ) : null}
+
+        {isLoading ? (
+          <View style={styles.loadingState}>
+            <ActivityIndicator color="#25634D" size="large" />
+            <Text style={styles.loadingLabel}>Loading your jots…</Text>
+          </View>
+        ) : jots.length ? (
           <>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Your jots</Text>
@@ -354,6 +367,19 @@ const styles = StyleSheet.create({
     lineHeight: 47,
   },
   description: { color: '#66746D', fontSize: 15, lineHeight: 22, maxWidth: 360 },
+  syncError: {
+    backgroundColor: '#FBECE9',
+    borderColor: '#F1C7C0',
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 4,
+    marginBottom: 10,
+    padding: 14,
+  },
+  syncErrorTitle: { color: '#9B352D', fontSize: 14, fontWeight: '700' },
+  syncErrorDescription: { color: '#874942', fontSize: 12, lineHeight: 18 },
+  loadingState: { alignItems: 'center', gap: 12, paddingVertical: 52 },
+  loadingLabel: { color: '#6F7C75', fontSize: 14 },
   emptyState: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
