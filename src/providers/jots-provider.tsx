@@ -14,6 +14,10 @@ import {
   saveJotChanges,
   subscribeToJots,
 } from '@/lib/firebase-jots';
+import {
+  getOrCreateJotEncryptionKey,
+  type JotEncryptionKey,
+} from '@/lib/jot-encryption';
 import { useAuth } from '@/providers/auth-provider';
 
 export type { Jot, JotEntry, JotKind } from '@/lib/firebase-jots';
@@ -41,6 +45,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
   const [isLoading, setIsLoading] = useState(true);
   const [syncError, setSyncError] = useState<string | null>(null);
   const jotsRef = useRef<Jot[]>([]);
+  const encryptionKeyRef = useRef<JotEncryptionKey | null>(null);
   const documentSaveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   function replaceJots(nextJots: Jot[]) {
@@ -56,18 +61,37 @@ export function JotsProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     if (!user) return;
 
-    return subscribeToJots(
-      user.uid,
-      (nextJots) => {
-        replaceJots(nextJots);
-        setIsLoading(false);
-        setSyncError(null);
-      },
-      (error) => {
+    let isCancelled = false;
+    let unsubscribe: (() => void) | undefined;
+
+    void getOrCreateJotEncryptionKey(user.uid)
+      .then((encryptionKey) => {
+        if (isCancelled) return;
+        encryptionKeyRef.current = encryptionKey;
+        unsubscribe = subscribeToJots(
+          user.uid,
+          encryptionKey,
+          (nextJots) => {
+            replaceJots(nextJots);
+            setIsLoading(false);
+            setSyncError(null);
+          },
+          (error) => {
+            reportSyncError(error);
+            setIsLoading(false);
+          },
+        );
+      })
+      .catch((error) => {
         reportSyncError(error);
         setIsLoading(false);
-      },
-    );
+      });
+
+    return () => {
+      isCancelled = true;
+      unsubscribe?.();
+      encryptionKeyRef.current = null;
+    };
   }, [user]);
 
   useEffect(() => {
@@ -92,8 +116,9 @@ export function JotsProvider({ children }: PropsWithChildren) {
   }
 
   function createJot(title: string, kind: JotKind) {
-    if (!user) {
-      throw new Error('A signed-in user is required to create a jot.');
+    const encryptionKey = encryptionKeyRef.current;
+    if (!user || !encryptionKey) {
+      throw new Error('Jot encryption is not ready yet.');
     }
 
     const now = Date.now();
@@ -110,7 +135,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
     };
 
     replaceJots([jot, ...jotsRef.current]);
-    void saveJot(user.uid, jot).catch(reportSyncError);
+    void saveJot(user.uid, jot, encryptionKey).catch(reportSyncError);
     return jot;
   }
 
@@ -129,10 +154,9 @@ export function JotsProvider({ children }: PropsWithChildren) {
     }));
 
     if (updatedJot) {
-      void saveJotChanges(jotId, {
-        entries: updatedJot.entries,
-        updatedAt: updatedJot.updatedAt,
-      }).catch(reportSyncError);
+      const encryptionKey = encryptionKeyRef.current;
+      if (!encryptionKey) return;
+      void saveJotChanges(updatedJot, encryptionKey).catch(reportSyncError);
     }
   }
 
@@ -146,10 +170,9 @@ export function JotsProvider({ children }: PropsWithChildren) {
     }));
 
     if (updatedJot) {
-      void saveJotChanges(jotId, {
-        entries: updatedJot.entries,
-        updatedAt: updatedJot.updatedAt,
-      }).catch(reportSyncError);
+      const encryptionKey = encryptionKeyRef.current;
+      if (!encryptionKey) return;
+      void saveJotChanges(updatedJot, encryptionKey).catch(reportSyncError);
     }
   }
 
@@ -167,10 +190,9 @@ export function JotsProvider({ children }: PropsWithChildren) {
 
     const timer = setTimeout(() => {
       documentSaveTimers.current.delete(jotId);
-      void saveJotChanges(jotId, {
-        documentContent: updatedJot.documentContent,
-        updatedAt: updatedJot.updatedAt,
-      }).catch(reportSyncError);
+      const encryptionKey = encryptionKeyRef.current;
+      if (!encryptionKey) return;
+      void saveJotChanges(updatedJot, encryptionKey).catch(reportSyncError);
     }, 400);
 
     documentSaveTimers.current.set(jotId, timer);

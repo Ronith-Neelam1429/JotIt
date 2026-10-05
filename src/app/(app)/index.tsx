@@ -186,8 +186,13 @@ export default function HomeScreen() {
         <Pressable
           accessibilityLabel="Create a new jot"
           accessibilityRole="button"
+          disabled={isLoading}
           onPress={() => setIsComposerOpen(true)}
-          style={({ pressed }) => [styles.createButton, pressed && styles.createButtonPressed]}>
+          style={({ pressed }) => [
+            styles.createButton,
+            isLoading && styles.createButtonDisabled,
+            pressed && styles.createButtonPressed,
+          ]}>
           <Text style={styles.plusIcon}>+</Text>
         </Pressable>
 
@@ -514,6 +519,7 @@ const styles = StyleSheet.create({
     width: 62,
   },
   createButtonPressed: { opacity: 0.78, transform: [{ scale: 0.96 }] },
+  createButtonDisabled: { backgroundColor: '#7C8882' },
   plusIcon: { color: '#FFFFFF', fontSize: 36, fontWeight: '300', lineHeight: 38 },
   composerScreen: { backgroundColor: '#F6F5EF', flex: 1 },
   composerSafeArea: { flex: 1 },
