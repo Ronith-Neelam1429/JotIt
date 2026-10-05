@@ -1,5 +1,11 @@
 import { Stack } from 'expo-router';
 
+import { JotsProvider } from '@/providers/jots-provider';
+
 export default function AppLayout() {
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <JotsProvider>
+      <Stack screenOptions={{ headerShown: false }} />
+    </JotsProvider>
+  );
 }
