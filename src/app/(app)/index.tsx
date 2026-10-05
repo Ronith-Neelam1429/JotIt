@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { Link } from 'expo-router';
 import {
-  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,45 +8,39 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ProfileAvatar } from '@/components/profile-avatar';
 import { useAuth } from '@/providers/auth-provider';
-import { signOutCurrentUser } from '@/lib/firebase-auth';
 
 export default function HomeScreen() {
   const { user } = useAuth();
-  const [isSigningOut, setIsSigningOut] = useState(false);
-
-  async function handleSignOut() {
-    setIsSigningOut(true);
-
-    try {
-      await signOutCurrentUser();
-    } finally {
-      setIsSigningOut(false);
-    }
-  }
 
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.topRow}>
           <Text style={styles.brand}>JotIt</Text>
-          <Pressable
-            accessibilityRole="button"
-            disabled={isSigningOut}
-            onPress={handleSignOut}
-            style={({ pressed }) => [styles.signOutButton, pressed && styles.pressed]}>
-            {isSigningOut ? (
-              <ActivityIndicator color="#25634D" size="small" />
-            ) : (
-              <Text style={styles.signOutLabel}>Sign out</Text>
-            )}
-          </Pressable>
+          <Link href="/account" asChild>
+            <Pressable
+              accessibilityLabel="Open account settings"
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.profileButton,
+                pressed && styles.pressed,
+              ]}>
+              <ProfileAvatar
+                displayName={user?.displayName}
+                email={user?.email}
+                photoURL={user?.photoURL}
+              />
+            </Pressable>
+          </Link>
         </View>
         <Text accessibilityRole="header" style={styles.heading}>
           Remember it.{`\n`}Together.
         </Text>
         <Text style={styles.description}>
-          Signed in as {user?.email}. Your shared lists will appear here next.
+          Welcome{user?.displayName ? `, ${user.displayName}` : ''}. Your shared
+          lists will appear here next.
         </Text>
         <View style={styles.card}>
           <Text style={styles.cardTitle}>You’re all set</Text>
@@ -78,18 +71,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   brand: { color: '#25634D', fontSize: 24, fontWeight: '800' },
-  signOutButton: {
-    alignItems: 'center',
-    borderColor: '#AFC3B9',
-    borderRadius: 12,
-    borderWidth: 1,
-    justifyContent: 'center',
-    minHeight: 42,
-    minWidth: 84,
-    paddingHorizontal: 14,
-  },
+  profileButton: { borderRadius: 24 },
   pressed: { opacity: 0.65 },
-  signOutLabel: { color: '#25634D', fontSize: 14, fontWeight: '700' },
   heading: { color: '#182B24', fontSize: 48, fontWeight: '700' },
   description: { color: '#53635B', fontSize: 18, lineHeight: 28 },
   card: { backgroundColor: '#E7EDE2', borderRadius: 20, gap: 12, padding: 24 },

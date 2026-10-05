@@ -61,6 +61,12 @@ Authentication → Sign-in method before using the flows.
 Google Sign-In uses the native Google SDK on iOS and Credential Manager on
 Android. It requires a development build and does not run in Expo Go.
 
+Account settings let signed-in users update their global display name and
+profile photo, view their email, request a password reset, and log out. Profile
+photos are uploaded to Firebase Storage under `users/{uid}/profile-picture`, so
+Firebase Storage must be initialized for the project with authenticated-user
+rules before uploads will work. The recommended rules are in `storage.rules`.
+
 ```sh
 npm run ios
 npm run android

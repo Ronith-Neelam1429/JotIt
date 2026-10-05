@@ -11,10 +11,14 @@ import {
 } from '@/components/auth/form-controls';
 import { getAuthErrorMessage } from '@/lib/auth-errors';
 import { createAccount, signInWithGoogle } from '@/lib/firebase-auth';
+import { useAuth } from '@/providers/auth-provider';
 
 export default function SignUpScreen() {
+  const { refreshUser } = useAuth();
+  const emailInput = useRef<TextInput>(null);
   const passwordInput = useRef<TextInput>(null);
   const confirmPasswordInput = useRef<TextInput>(null);
+  const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -23,7 +27,7 @@ export default function SignUpScreen() {
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
 
   async function handleCreateAccount() {
-    if (!email.trim() || !password || !confirmPassword) {
+    if (!displayName.trim() || !email.trim() || !password || !confirmPassword) {
       setError('Complete all fields to create your account.');
       return;
     }
@@ -42,7 +46,8 @@ export default function SignUpScreen() {
     setIsSubmitting(true);
 
     try {
-      await createAccount(email, password);
+      await createAccount(displayName, email, password);
+      await refreshUser();
     } catch (caughtError) {
       setError(getAuthErrorMessage(caughtError));
     } finally {
@@ -76,6 +81,17 @@ export default function SignUpScreen() {
       subtitle="Create an account so your shared jots stay synced across every device."
       title="Start jotting together">
       <Field
+        autoCapitalize="words"
+        autoComplete="name"
+        label="Name"
+        onChangeText={setDisplayName}
+        onSubmitEditing={() => emailInput.current?.focus()}
+        placeholder="How your friends will see you"
+        returnKeyType="next"
+        textContentType="name"
+        value={displayName}
+      />
+      <Field
         autoCapitalize="none"
         autoComplete="email"
         keyboardType="email-address"
@@ -83,6 +99,7 @@ export default function SignUpScreen() {
         onChangeText={setEmail}
         onSubmitEditing={() => passwordInput.current?.focus()}
         placeholder="you@example.com"
+        ref={emailInput}
         returnKeyType="next"
         textContentType="emailAddress"
         value={email}

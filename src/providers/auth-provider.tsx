@@ -7,10 +7,14 @@ import {
   useState,
 } from 'react';
 
-import { subscribeToAuthState } from '@/lib/firebase-auth';
+import {
+  reloadCurrentUser,
+  subscribeToAuthState,
+} from '@/lib/firebase-auth';
 
 type AuthContextValue = {
   isLoading: boolean;
+  refreshUser: () => Promise<void>;
   user: User | null;
 };
 
@@ -27,8 +31,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
     });
   }, []);
 
+  async function refreshUser() {
+    const refreshedUser = await reloadCurrentUser();
+    setUser(refreshedUser);
+  }
+
   return (
-    <AuthContext.Provider value={{ isLoading, user }}>
+    <AuthContext.Provider value={{ isLoading, refreshUser, user }}>
       {children}
     </AuthContext.Provider>
   );

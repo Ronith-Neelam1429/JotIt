@@ -26,6 +26,14 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   PLAY_SERVICES_NOT_AVAILABLE:
     'Google Play Services is unavailable or needs to be updated.',
   SIGN_IN_REQUIRED: 'Choose a Google account to continue.',
+  'storage/bucket-not-found':
+    'Profile photos are not configured yet. Set up Firebase Storage and try again.',
+  'storage/canceled': 'The profile photo upload was canceled.',
+  'storage/object-not-found': 'That profile photo could not be found.',
+  'storage/quota-exceeded': 'The profile photo storage limit has been reached.',
+  'storage/unauthenticated': 'Sign in again before uploading a profile photo.',
+  'storage/unauthorized':
+    'Your Firebase Storage rules do not allow this profile photo upload.',
 };
 
 export function getAuthErrorMessage(error: unknown) {
