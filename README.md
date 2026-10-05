@@ -18,6 +18,7 @@ implemented. The starter icons are temporary Expo assets.
 - React Native and Expo for iOS and Android
 - TypeScript with strict checking
 - Expo Router for navigation
+- Native Firebase Authentication and Cloud Firestore
 - npm with a committed dependency lockfile
 
 ## Getting started
@@ -26,18 +27,30 @@ Use Node.js 24 LTS and npm.
 
 ```sh
 npm ci
-npm start
+npm run ios
 ```
 
-The development server offers options for a device, an Android emulator, or an
-iOS simulator. Expo Go must support the project's Expo SDK version; use a
-development build if it does not. An iOS simulator requires macOS and Xcode;
-an Android emulator requires Android Studio.
+### Firebase configuration
+
+The iOS and Android Firebase client configuration files are connected through
+`app.json`. The bundle identifier and Android package are both
+`com.ronithneelam.jotit`. Access control must be enforced with Firebase
+Authentication and Firestore Security Rules. Never put a Firebase
+service-account private key in the mobile app.
+
+Firebase is accessed through `src/lib/firebase.ts`. Import
+`getFirebaseAuth` from `src/lib/firebase-auth` for authentication and
+`getFirestoreDb` from `src/lib/firebase` for Firestore. The native Firestore SDK
+provides local persistence and synchronizes pending changes after reconnecting.
+
+React Native Firebase requires a development build and does not run in Expo Go.
+The first platform command creates the native project, compiles a development
+build, installs it on a simulator or emulator, and starts Expo. Later sessions
+can use `npm start` when the development build is already installed.
 
 ```sh
 npm run ios
 npm run android
-npm run web
 ```
 
 ## Type checking
@@ -51,6 +64,8 @@ npm run typecheck
 - `src/app/_layout.tsx`: app navigation and status bar
 - `src/app/index.tsx`: welcome screen
 - `assets/`: app icons and splash screen assets
+- `GoogleService-Info.plist`: Firebase iOS client configuration
+- `google-services.json`: Firebase Android client configuration
 - `app.json`: Expo configuration
 
 ## Planned milestones
