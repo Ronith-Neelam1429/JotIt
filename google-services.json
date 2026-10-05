@@ -12,7 +12,20 @@
           "package_name": "com.ronithneelam.jotit"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1048230360306-ddqljlus4gu12r9p2o3ii9larkf7fkgj.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ronithneelam.jotit",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "1048230360306-ofk04fgjo8m4c08flqenl9u2bhsjoer1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyB7m-ejo-ysKASeDiVBjDWQWHzNwdWaU1k"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1048230360306-ofk04fgjo8m4c08flqenl9u2bhsjoer1.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1048230360306-ofahjdaftdttlovvgtqqsbvk3aecdcqi.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.ronithneelam.jotit"
+              }
+            }
+          ]
         }
       }
     }

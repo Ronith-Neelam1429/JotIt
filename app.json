@@ -43,10 +43,11 @@
         "expo-build-properties",
         {
           "ios": {
-            "useFrameworks": "static"
+            "useFrameworks": "dynamic"
           }
         }
-      ]
+      ],
+      "react-native-nitro-google-signin"
     ],
     "experiments": {
       "typedRoutes": true,

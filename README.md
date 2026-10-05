@@ -48,6 +48,19 @@ The first platform command creates the native project, compiles a development
 build, installs it on a simulator or emulator, and starts Expo. Later sessions
 can use `npm start` when the development build is already installed.
 
+The iOS build uses dynamic framework linkage because React Native Firebase 26
+resolves the Firebase Apple SDK through Swift Package Manager by default.
+
+## Authentication
+
+JotIt uses Firebase Authentication. Email/password and Google account sign-in,
+password reset, persistent sessions, protected routes, and sign-out are
+implemented. Enable **Email/Password** and **Google** under Firebase Console →
+Authentication → Sign-in method before using the flows.
+
+Google Sign-In uses the native Google SDK on iOS and Credential Manager on
+Android. It requires a development build and does not run in Expo Go.
+
 ```sh
 npm run ios
 npm run android
