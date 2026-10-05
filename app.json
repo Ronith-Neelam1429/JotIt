@@ -1,8 +1,8 @@
 {
   "expo": {
     "name": "JotIt",
-    "slug": "JotIt",
-    "version": "1.0.0",
+    "slug": "jotit",
+    "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "jotit",

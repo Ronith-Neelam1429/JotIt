@@ -1,56 +1,63 @@
-# Welcome to your Expo app 👋
+# JotIt
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+JotIt is a mobile app for sharing quick lists and notes with friends and family.
+A group can create a shared **jot**, such as a grocery list, and everyone invited
+can add or update items so the information stays in one place.
 
-## Get started
+The goal is to make capturing everyday information as simple as opening a jot,
+adding what you remembered, and moving on.
 
-1. Install dependencies
+## Project status
 
-   ```bash
-   npm install
-   ```
+Initial project foundation with a JotIt welcome screen. Shared lists,
+authentication, invitations, and synchronization are planned and are not yet
+implemented. The starter icons are temporary Expo assets.
 
-2. Start the app
+## Stack
 
-   ```bash
-   npx expo start
-   ```
+- React Native and Expo for iOS and Android
+- TypeScript with strict checking
+- Expo Router for navigation
+- npm with a committed dependency lockfile
 
-In the output, you'll find options to open the app in a
+## Getting started
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+Use Node.js 24 LTS and npm.
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```sh
+npm ci
+npm start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+The development server offers options for a device, an Android emulator, or an
+iOS simulator. Expo Go must support the project's Expo SDK version; use a
+development build if it does not. An iOS simulator requires macOS and Xcode;
+an Android emulator requires Android Studio.
 
-### Other setup steps
+```sh
+npm run ios
+npm run android
+npm run web
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+## Type checking
 
-## Learn more
+```sh
+npm run typecheck
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+## Project structure
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+- `src/app/_layout.tsx`: app navigation and status bar
+- `src/app/index.tsx`: welcome screen
+- `assets/`: app icons and splash screen assets
+- `app.json`: Expo configuration
 
-## Join the community
+## Planned milestones
 
-Join our community of developers creating universal apps.
+1. Create and edit personal lists.
+2. Add accounts, group membership, and invitations.
+3. Synchronize shared lists with access controls.
+4. Support offline edits and resolve concurrent changes.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Based on the official Expo starter; its license is preserved in `LICENSE`.
