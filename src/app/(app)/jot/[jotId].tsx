@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useJots } from '@/providers/jots-provider';
 
-function JotHeader({ title }: { title: string }) {
+function JotHeader({ onMore, title }: { onMore: () => void; title: string }) {
   return (
     <View style={styles.header}>
       <Pressable
@@ -27,14 +28,21 @@ function JotHeader({ title }: { title: string }) {
         <Text style={styles.backIcon}>‹</Text>
       </Pressable>
       <Text numberOfLines={1} style={styles.headerTitle}>{title}</Text>
-      <View style={styles.headerSpacer} />
+      <Pressable
+        accessibilityLabel="Jot options"
+        accessibilityRole="button"
+        hitSlop={10}
+        onPress={onMore}
+        style={({ pressed }) => [styles.moreButton, pressed && styles.pressed]}>
+        <Text style={styles.moreIcon}>•••</Text>
+      </Pressable>
     </View>
   );
 }
 
 export default function JotScreen() {
   const { jotId } = useLocalSearchParams<{ jotId: string }>();
-  const { addEntry, isLoading, jots, toggleEntry, updateDocument } = useJots();
+  const { addEntry, isLoading, jots, toggleEntry, trashJots, updateDocument } = useJots();
   const [draft, setDraft] = useState('');
   const scrollViewRef = useRef<ScrollView>(null);
   const jot = jots.find((candidate) => candidate.id === jotId);
@@ -43,6 +51,23 @@ export default function JotScreen() {
     if (!jot || !draft.trim()) return;
     addEntry(jot.id, draft);
     setDraft('');
+  }
+
+  function showJotOptions() {
+    if (!jot) return;
+
+    Alert.alert(jot.title, undefined, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        onPress: () => {
+          void trashJots([jot.id])
+            .then(() => router.replace('/'))
+            .catch(() => undefined);
+        },
+        style: 'destructive',
+        text: 'Move to Trash',
+      },
+    ]);
   }
 
   if (isLoading) {
@@ -85,7 +110,7 @@ export default function JotScreen() {
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardView}>
-          <JotHeader title={jot.title} />
+          <JotHeader onMore={showJotOptions} title={jot.title} />
           <View style={styles.documentContent}>
             <Text accessibilityRole="header" style={styles.documentTitle}>{jot.title}</Text>
             <Text style={styles.documentMeta}>
@@ -116,7 +141,7 @@ export default function JotScreen() {
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}>
-        <JotHeader title={jot.title} />
+        <JotHeader onMore={showJotOptions} title={jot.title} />
 
         <ScrollView
           contentContainerStyle={styles.content}
@@ -221,7 +246,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
-  headerSpacer: { width: 42 },
+  moreButton: { alignItems: 'center', height: 42, justifyContent: 'center', width: 42 },
+  moreIcon: { color: '#25634D', fontSize: 17, fontWeight: '800', letterSpacing: 1 },
   documentContent: {
     alignSelf: 'center',
     flex: 1,

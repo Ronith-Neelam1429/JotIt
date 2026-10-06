@@ -1,9 +1,11 @@
 import {
   collection,
+  deleteDoc,
   doc,
   onSnapshot,
   query,
   setDoc,
+  Timestamp,
   updateDoc,
   where,
 } from '@react-native-firebase/firestore';
@@ -32,18 +34,26 @@ export type Jot = {
   entries: JotEntry[];
   id: string;
   kind: JotKind;
+  memberIds: string[];
+  ownerId: string;
   title: string;
+  trashedAt: number | null;
   updatedAt: number;
 };
 
-type EncryptedJotContent = Omit<Jot, 'createdAt' | 'id' | 'updatedAt'>;
+type EncryptedJotContent = Omit<
+  Jot,
+  'createdAt' | 'id' | 'memberIds' | 'ownerId' | 'trashedAt' | 'updatedAt'
+>;
 
 type EncryptedFirestoreJot = {
   createdAt: number;
   encryptedPayload: string;
   encryptionVersion: 1;
+  expiresAt: Timestamp | null;
   memberIds: string[];
   ownerId: string;
+  trashedAt: Timestamp | null;
   updatedAt: number;
 };
 
@@ -51,6 +61,8 @@ type LegacyFirestoreJot = Omit<Jot, 'id'> & {
   memberIds: string[];
   ownerId: string;
 };
+
+const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 function isJotKind(value: unknown): value is JotKind {
   return value === 'document' || value === 'list';
@@ -117,7 +129,10 @@ function parseLegacyJot(id: string, value: unknown): Jot | null {
     entries: parseEntries(data.entries),
     id,
     kind: data.kind,
+    memberIds: Array.isArray(data.memberIds) ? data.memberIds : [],
+    ownerId: typeof data.ownerId === 'string' ? data.ownerId : '',
     title: data.title,
+    trashedAt: null,
     updatedAt: data.updatedAt,
   };
 }
@@ -128,8 +143,6 @@ function jotDocument(jotId: string) {
 
 async function encryptedJotData(
   jot: Jot,
-  ownerId: string,
-  memberIds: string[],
   encryptionKey: JotEncryptionKey,
 ): Promise<EncryptedFirestoreJot> {
   const content: EncryptedJotContent = {
@@ -145,8 +158,12 @@ async function encryptedJotData(
     createdAt: jot.createdAt,
     encryptedPayload: await encryptJson(content, encryptionKey),
     encryptionVersion: 1,
-    memberIds,
-    ownerId,
+    expiresAt: jot.trashedAt
+      ? Timestamp.fromMillis(jot.trashedAt + TRASH_RETENTION_MS)
+      : null,
+    memberIds: jot.memberIds,
+    ownerId: jot.ownerId,
+    trashedAt: jot.trashedAt ? Timestamp.fromMillis(jot.trashedAt) : null,
     updatedAt: jot.updatedAt,
   };
 }
@@ -177,6 +194,9 @@ async function decryptStoredJot(
     ...content,
     createdAt: data.createdAt,
     id,
+    memberIds: Array.isArray(data.memberIds) ? data.memberIds : [],
+    ownerId: typeof data.ownerId === 'string' ? data.ownerId : '',
+    trashedAt: data.trashedAt?.toMillis() ?? null,
     updatedAt: data.updatedAt,
   };
 }
@@ -209,15 +229,9 @@ export function subscribeToJots(
             const legacyJot = parseLegacyJot(jotSnapshot.id, data);
             if (!legacyJot) return null;
 
-            const legacyData = data as LegacyFirestoreJot;
             await setDoc(
               jotDocument(legacyJot.id),
-              await encryptedJotData(
-                legacyJot,
-                legacyData.ownerId,
-                legacyData.memberIds,
-                encryptionKey,
-              ),
+              await encryptedJotData(legacyJot, encryptionKey),
             );
             return legacyJot;
           }),
@@ -235,13 +249,12 @@ export function subscribeToJots(
 }
 
 export async function saveJot(
-  userId: string,
   jot: Jot,
   encryptionKey: JotEncryptionKey,
 ) {
   await setDoc(
     jotDocument(jot.id),
-    await encryptedJotData(jot, userId, [userId], encryptionKey),
+    await encryptedJotData(jot, encryptionKey),
   );
 }
 
@@ -260,4 +273,28 @@ export async function saveJotChanges(jot: Jot, encryptionKey: JotEncryptionKey) 
     encryptionVersion: 1,
     updatedAt: jot.updatedAt,
   });
+}
+
+export async function moveJotsToTrash(jotIds: string[], trashedAt: number) {
+  await Promise.all(
+    jotIds.map((jotId) =>
+      updateDoc(jotDocument(jotId), {
+        expiresAt: Timestamp.fromMillis(trashedAt + TRASH_RETENTION_MS),
+        trashedAt: Timestamp.fromMillis(trashedAt),
+        updatedAt: trashedAt,
+      }),
+    ),
+  );
+}
+
+export function restoreJotFromTrash(jotId: string) {
+  return updateDoc(jotDocument(jotId), {
+    expiresAt: null,
+    trashedAt: null,
+    updatedAt: Date.now(),
+  });
+}
+
+export function permanentlyDeleteJot(jotId: string) {
+  return deleteDoc(jotDocument(jotId));
 }

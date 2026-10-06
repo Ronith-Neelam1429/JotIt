@@ -11,7 +11,7 @@ service cloud.firestore {
     }
 
     function isEncryptedJot() {
-      return request.resource.data.keys().hasOnly([
+      return request.resource.data.keys().hasAll([
           'createdAt',
           'encryptedPayload',
           'encryptionVersion',
@@ -19,12 +19,35 @@ service cloud.firestore {
           'ownerId',
           'updatedAt'
         ])
+        && request.resource.data.keys().hasOnly([
+          'createdAt',
+          'encryptedPayload',
+          'encryptionVersion',
+          'expiresAt',
+          'memberIds',
+          'ownerId',
+          'trashedAt',
+          'updatedAt'
+        ])
         && request.resource.data.createdAt is int
         && request.resource.data.encryptedPayload is string
         && request.resource.data.encryptionVersion == 1
         && request.resource.data.memberIds is list
         && request.resource.data.ownerId is string
-        && request.resource.data.updatedAt is int;
+        && request.resource.data.updatedAt is int
+        && (
+          !request.resource.data.keys().hasAny(['expiresAt', 'trashedAt'])
+          || (
+            request.resource.data.keys().hasAll(['expiresAt', 'trashedAt'])
+            && (
+              (request.resource.data.expiresAt == null
+                && request.resource.data.trashedAt == null)
+              || (request.resource.data.expiresAt is timestamp
+                && request.resource.data.trashedAt is timestamp
+                && request.resource.data.expiresAt > request.resource.data.trashedAt)
+            )
+          )
+        );
     }
 
     match /jots/{jotId} {

@@ -1,7 +1,8 @@
 import { Link, router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -46,10 +47,13 @@ function getJotMeta(jot: Jot) {
 
 export default function HomeScreen() {
   const { user } = useAuth();
-  const { createJot: createStoredJot, isLoading, jots, syncError } = useJots();
+  const { createJot: createStoredJot, isLoading, jots, syncError, trashJots } = useJots();
   const [isComposerOpen, setIsComposerOpen] = useState(false);
+  const [isSelecting, setIsSelecting] = useState(false);
   const [jotTitle, setJotTitle] = useState('');
+  const [selectedJotIds, setSelectedJotIds] = useState<Set<string>>(new Set());
   const [selectedKind, setSelectedKind] = useState<JotKind | null>(null);
+  const longPressedJotIdRef = useRef<string | null>(null);
 
   const firstName = useMemo(
     () => user?.displayName?.trim().split(/\s+/)[0] || 'there',
@@ -66,6 +70,46 @@ export default function HomeScreen() {
     const jot = createStoredJot(title, kind);
     closeComposer();
     router.push({ pathname: '/jot/[jotId]', params: { jotId: jot.id } });
+  }
+
+  function beginSelection(jotId: string) {
+    setIsSelecting(true);
+    setSelectedJotIds(new Set([jotId]));
+  }
+
+  function toggleSelection(jotId: string) {
+    setSelectedJotIds((currentIds) => {
+      const nextIds = new Set(currentIds);
+      if (nextIds.has(jotId)) nextIds.delete(jotId);
+      else nextIds.add(jotId);
+      return nextIds;
+    });
+  }
+
+  function endSelection() {
+    setIsSelecting(false);
+    setSelectedJotIds(new Set());
+  }
+
+  function confirmTrashSelection() {
+    const selectedCount = selectedJotIds.size;
+    if (!selectedCount) return;
+
+    Alert.alert(
+      'Move to Trash?',
+      `${selectedCount} ${selectedCount === 1 ? 'jot' : 'jots'} will be deleted permanently after 30 days.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          onPress: () => {
+            void trashJots([...selectedJotIds]).catch(() => undefined);
+            endSelection();
+          },
+          style: 'destructive',
+          text: 'Move to Trash',
+        },
+      ],
+    );
   }
 
   return (
@@ -121,7 +165,9 @@ export default function HomeScreen() {
         ) : jots.length ? (
           <>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Your jots</Text>
+              <Text style={styles.sectionTitle}>
+                {isSelecting ? 'Select jots' : 'Your jots'}
+              </Text>
               <Text style={styles.sectionCount}>{jots.length}</Text>
             </View>
 
@@ -130,11 +176,26 @@ export default function HomeScreen() {
                 <Pressable
                   accessibilityLabel={`Open ${jot.title}`}
                   accessibilityRole="button"
+                  accessibilityState={{ selected: selectedJotIds.has(jot.id) }}
+                  delayLongPress={350}
                   key={jot.id}
-                  onPress={() =>
-                    router.push({ pathname: '/jot/[jotId]', params: { jotId: jot.id } })
-                  }
-                  style={({ pressed }) => [styles.jotCard, pressed && styles.jotCardPressed]}>
+                  onLongPress={() => {
+                    longPressedJotIdRef.current = jot.id;
+                    beginSelection(jot.id);
+                  }}
+                  onPress={() => {
+                    if (longPressedJotIdRef.current === jot.id) {
+                      longPressedJotIdRef.current = null;
+                      return;
+                    }
+                    if (isSelecting) toggleSelection(jot.id);
+                    else router.push({ pathname: '/jot/[jotId]', params: { jotId: jot.id } });
+                  }}
+                  style={({ pressed }) => [
+                    styles.jotCard,
+                    selectedJotIds.has(jot.id) && styles.jotCardSelected,
+                    pressed && styles.jotCardPressed,
+                  ]}>
                   <View style={[styles.jotIcon, { backgroundColor: jot.accent }]}>
                     <Text style={styles.jotEmoji}>{jot.emoji}</Text>
                   </View>
@@ -153,7 +214,19 @@ export default function HomeScreen() {
                       <Text style={styles.itemCount}>{getJotMeta(jot)}</Text>
                     </View>
                   </View>
-                  <Text style={styles.chevron}>›</Text>
+                  {isSelecting ? (
+                    <View
+                      style={[
+                        styles.selectionCircle,
+                        selectedJotIds.has(jot.id) && styles.selectionCircleSelected,
+                      ]}>
+                      {selectedJotIds.has(jot.id) ? (
+                        <Text style={styles.selectionCheckmark}>✓</Text>
+                      ) : null}
+                    </View>
+                  ) : (
+                    <Text style={styles.chevron}>›</Text>
+                  )}
                 </Pressable>
               ))}
             </View>
@@ -177,7 +250,29 @@ export default function HomeScreen() {
         )}
       </ScrollView>
 
-      <View style={styles.bottomDock}>
+      {isSelecting ? (
+        <View style={styles.selectionDock}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={endSelection}
+            style={({ pressed }) => [styles.selectionCancelButton, pressed && styles.pressed]}>
+            <Text style={styles.selectionCancelLabel}>Cancel</Text>
+          </Pressable>
+          <Text style={styles.selectionCount}>{selectedJotIds.size} selected</Text>
+          <Pressable
+            accessibilityRole="button"
+            disabled={!selectedJotIds.size}
+            onPress={confirmTrashSelection}
+            style={({ pressed }) => [
+              styles.trashSelectionButton,
+              !selectedJotIds.size && styles.trashSelectionButtonDisabled,
+              pressed && styles.pressed,
+            ]}>
+            <Text style={styles.trashSelectionLabel}>Trash</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={styles.bottomDock}>
         <View style={styles.navItem}>
           <Text style={styles.homeIcon}>⌂</Text>
           <Text style={styles.navLabelActive}>Home</Text>
@@ -210,7 +305,8 @@ export default function HomeScreen() {
             <Text style={styles.navLabel}>Account</Text>
           </Pressable>
         </Link>
-      </View>
+        </View>
+      )}
 
       <Modal
         animationType="slide"
@@ -454,6 +550,7 @@ const styles = StyleSheet.create({
     padding: 13,
   },
   jotCardPressed: { opacity: 0.68, transform: [{ scale: 0.99 }] },
+  jotCardSelected: { backgroundColor: '#EDF5F1', borderColor: '#25634D' },
   jotIcon: {
     alignItems: 'center',
     borderRadius: 14,
@@ -480,6 +577,17 @@ const styles = StyleSheet.create({
   },
   itemCount: { color: '#78847D', fontSize: 11 },
   chevron: { color: '#839087', fontSize: 28, fontWeight: '300', lineHeight: 30 },
+  selectionCircle: {
+    alignItems: 'center',
+    borderColor: '#9EAAA4',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    height: 24,
+    justifyContent: 'center',
+    width: 24,
+  },
+  selectionCircleSelected: { backgroundColor: '#25634D', borderColor: '#25634D' },
+  selectionCheckmark: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
   bottomDock: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -499,6 +607,35 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.11,
     shadowRadius: 20,
   },
+  selectionDock: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E8E6DE',
+    borderRadius: 24,
+    borderWidth: 1,
+    bottom: 22,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    left: 22,
+    padding: 10,
+    position: 'absolute',
+    right: 22,
+    shadowColor: '#24352D',
+    shadowOffset: { height: 8, width: 0 },
+    shadowOpacity: 0.11,
+    shadowRadius: 20,
+  },
+  selectionCancelButton: { paddingHorizontal: 12, paddingVertical: 11 },
+  selectionCancelLabel: { color: '#52625A', fontSize: 14, fontWeight: '700' },
+  selectionCount: { color: '#1D2B25', fontSize: 14, fontWeight: '700' },
+  trashSelectionButton: {
+    backgroundColor: '#B23A32',
+    borderRadius: 13,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+  },
+  trashSelectionButtonDisabled: { opacity: 0.45 },
+  trashSelectionLabel: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
   navItem: { alignItems: 'center', gap: 3, minWidth: 58, paddingVertical: 7 },
   homeIcon: { color: '#1F6B52', fontSize: 27, fontWeight: '700', lineHeight: 25 },
   navLabel: { color: '#7E8983', fontSize: 10, fontWeight: '600' },

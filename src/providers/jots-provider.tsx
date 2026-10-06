@@ -10,6 +10,9 @@ import {
 import {
   type Jot,
   type JotKind,
+  moveJotsToTrash,
+  permanentlyDeleteJot,
+  restoreJotFromTrash,
   saveJot,
   saveJotChanges,
   subscribeToJots,
@@ -25,10 +28,14 @@ export type { Jot, JotEntry, JotKind } from '@/lib/firebase-jots';
 type JotsContextValue = {
   addEntry: (jotId: string, text: string) => void;
   createJot: (title: string, kind: JotKind) => Jot;
+  deleteJotPermanently: (jotId: string) => Promise<void>;
   isLoading: boolean;
   jots: Jot[];
+  restoreJot: (jotId: string) => Promise<void>;
   syncError: string | null;
   toggleEntry: (jotId: string, entryId: string) => void;
+  trashJots: (jotIds: string[]) => Promise<void>;
+  trashedJots: Jot[];
   updateDocument: (jotId: string, content: string) => void;
 };
 
@@ -130,12 +137,15 @@ export function JotsProvider({ children }: PropsWithChildren) {
       entries: [],
       id: createId(),
       kind,
+      memberIds: [user.uid],
+      ownerId: user.uid,
       title: title.trim(),
+      trashedAt: null,
       updatedAt: now,
     };
 
     replaceJots([jot, ...jotsRef.current]);
-    void saveJot(user.uid, jot, encryptionKey).catch(reportSyncError);
+    void saveJot(jot, encryptionKey).catch(reportSyncError);
     return jot;
   }
 
@@ -198,15 +208,70 @@ export function JotsProvider({ children }: PropsWithChildren) {
     documentSaveTimers.current.set(jotId, timer);
   }
 
+  async function trashJots(jotIds: string[]) {
+    if (!jotIds.length) return;
+
+    const previousJots = jotsRef.current;
+    const trashedAt = Date.now();
+    const trashedIds = new Set(jotIds);
+    replaceJots(
+      jotsRef.current.map((jot) =>
+        trashedIds.has(jot.id) ? { ...jot, trashedAt, updatedAt: trashedAt } : jot,
+      ),
+    );
+
+    try {
+      await moveJotsToTrash(jotIds, trashedAt);
+    } catch (error) {
+      replaceJots(previousJots);
+      reportSyncError(error);
+      throw error;
+    }
+  }
+
+  async function restoreJot(jotId: string) {
+    const previousJots = jotsRef.current;
+    const restoredAt = Date.now();
+    updateLocalJot(jotId, (jot) => ({ ...jot, trashedAt: null, updatedAt: restoredAt }));
+
+    try {
+      await restoreJotFromTrash(jotId);
+    } catch (error) {
+      replaceJots(previousJots);
+      reportSyncError(error);
+      throw error;
+    }
+  }
+
+  async function deleteJotPermanently(jotId: string) {
+    const previousJots = jotsRef.current;
+    replaceJots(jotsRef.current.filter((jot) => jot.id !== jotId));
+
+    try {
+      await permanentlyDeleteJot(jotId);
+    } catch (error) {
+      replaceJots(previousJots);
+      reportSyncError(error);
+      throw error;
+    }
+  }
+
+  const activeJots = jots.filter((jot) => jot.trashedAt === null);
+  const trashedJots = jots.filter((jot) => jot.trashedAt !== null);
+
   return (
     <JotsContext.Provider
       value={{
         addEntry,
         createJot,
+        deleteJotPermanently,
         isLoading,
-        jots,
+        jots: activeJots,
+        restoreJot,
         syncError,
         toggleEntry,
+        trashJots,
+        trashedJots,
         updateDocument,
       }}>
       {children}

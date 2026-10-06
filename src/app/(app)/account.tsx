@@ -21,9 +21,11 @@ import {
 } from '@/lib/firebase-auth';
 import { uploadProfilePhoto } from '@/lib/firebase-storage';
 import { useAuth } from '@/providers/auth-provider';
+import { useJots } from '@/providers/jots-provider';
 
 export default function AccountScreen() {
   const { refreshUser, user } = useAuth();
+  const { trashedJots } = useJots();
   const [displayName, setDisplayName] = useState(user?.displayName ?? '');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -262,6 +264,27 @@ export default function AccountScreen() {
           </View>
         </View>
 
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Storage</Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/trash')}
+            style={({ pressed }) => [styles.trashRow, pressed && styles.pressed]}>
+            <View style={styles.trashIcon}>
+              <Text style={styles.trashIconText}>♲</Text>
+            </View>
+            <View style={styles.detailText}>
+              <Text style={styles.trashTitle}>Trash</Text>
+              <Text style={styles.trashDescription}>
+                {trashedJots.length
+                  ? `${trashedJots.length} ${trashedJots.length === 1 ? 'jot' : 'jots'} waiting for deletion`
+                  : 'Restore or permanently delete jots'}
+              </Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </Pressable>
+        </View>
+
         <Pressable
           accessibilityRole="button"
           disabled={isSigningOut}
@@ -347,6 +370,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   inlineButtonLabel: { color: '#25634D', fontSize: 14, fontWeight: '700' },
+  trashRow: { alignItems: 'center', flexDirection: 'row', gap: 13 },
+  trashIcon: {
+    alignItems: 'center',
+    backgroundColor: '#F1EEE7',
+    borderRadius: 13,
+    height: 46,
+    justifyContent: 'center',
+    width: 46,
+  },
+  trashIconText: { color: '#53635B', fontSize: 24 },
+  trashTitle: { color: '#182B24', fontSize: 16, fontWeight: '700' },
+  trashDescription: { color: '#78847D', fontSize: 12, lineHeight: 17 },
+  chevron: { color: '#839087', fontSize: 28, fontWeight: '300' },
   logoutButton: {
     alignItems: 'center',
     backgroundColor: '#FDECEA',
