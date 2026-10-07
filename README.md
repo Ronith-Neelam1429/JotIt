@@ -33,10 +33,10 @@ npm run ios
 ### Firebase configuration
 
 The iOS and Android Firebase client configuration files are connected through
-`app.json`. The bundle identifier and Android package are both
-`com.ronithneelam.jotit`. Access control must be enforced with Firebase
-Authentication and Firestore Security Rules. Never put a Firebase
-service-account private key in the mobile app.
+`app.json`. Their registered application identifiers must match the values in
+the Firebase console. Access control must be enforced with Firebase
+Authentication and Firestore Security Rules. Never put a Firebase service-account
+private key in the mobile app.
 
 Firebase is accessed through `src/lib/firebase.ts`. Import
 `getFirebaseAuth` from `src/lib/firebase-auth` for authentication and
