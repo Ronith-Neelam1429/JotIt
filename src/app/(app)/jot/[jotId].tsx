@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useJots } from '@/providers/jots-provider';
+import { type JotKind, useJots } from '@/providers/jots-provider';
 
 const JOT_TITLE_MAX_LENGTH = 100;
 
@@ -143,10 +143,100 @@ function RenameJotModal({
   );
 }
 
+type JotOptionsModalProps = {
+  kind: JotKind;
+  onChangeKind: () => void;
+  onClose: () => void;
+  onRename: () => void;
+  onTrash: () => void;
+  visible: boolean;
+};
+
+function JotOptionsModal({
+  kind,
+  onChangeKind,
+  onClose,
+  onRename,
+  onTrash,
+  visible,
+}: JotOptionsModalProps) {
+  return (
+    <Modal
+      animationType="fade"
+      onRequestClose={onClose}
+      presentationStyle="overFullScreen"
+      transparent
+      visible={visible}>
+      <View style={styles.optionsBackdrop}>
+        <SafeAreaView accessibilityViewIsModal edges={['bottom']} style={styles.optionsCard}>
+          <View style={styles.optionsHandle} />
+          <Text accessibilityRole="header" style={styles.optionsHeading}>Jot options</Text>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={onRename}
+            style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}>
+            <View style={styles.optionIcon}><Text style={styles.optionIconText}>✎</Text></View>
+            <View style={styles.optionCopy}>
+              <Text style={styles.optionTitle}>Rename</Text>
+              <Text style={styles.optionDescription}>Change the name of this jot</Text>
+            </View>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={onChangeKind}
+            style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}>
+            <View style={styles.optionIcon}>
+              <Text style={styles.optionIconText}>{kind === 'list' ? 'Aa' : '☷'}</Text>
+            </View>
+            <View style={styles.optionCopy}>
+              <Text style={styles.optionTitle}>
+                Switch to {kind === 'list' ? 'free write' : 'list'}
+              </Text>
+              <Text style={styles.optionDescription}>Keep the current content as you switch</Text>
+            </View>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={onTrash}
+            style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}>
+            <View style={[styles.optionIcon, styles.optionIconDanger]}>
+              <Text style={styles.optionIconDangerText}>♲</Text>
+            </View>
+            <View style={styles.optionCopy}>
+              <Text style={styles.optionDangerTitle}>Move to Trash</Text>
+              <Text style={styles.optionDescription}>Keep it recoverable for 30 days</Text>
+            </View>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={onClose}
+            style={({ pressed }) => [styles.optionsCancelButton, pressed && styles.pressed]}>
+            <Text style={styles.optionsCancelLabel}>Cancel</Text>
+          </Pressable>
+        </SafeAreaView>
+      </View>
+    </Modal>
+  );
+}
+
 export default function JotScreen() {
   const { jotId } = useLocalSearchParams<{ jotId: string }>();
-  const { addEntry, isLoading, jots, renameJot, toggleEntry, trashJots, updateDocument } = useJots();
+  const {
+    addEntry,
+    changeJotKind,
+    isLoading,
+    jots,
+    renameJot,
+    toggleEntry,
+    trashJots,
+    updateDocument,
+  } = useJots();
   const [draft, setDraft] = useState('');
+  const [isOptionsOpen, setIsOptionsOpen] = useState(false);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
@@ -188,22 +278,49 @@ export default function JotScreen() {
     }
   }
 
-  function showJotOptions() {
+  function confirmJotKindChange() {
     if (!jot) return;
 
-    Alert.alert(jot.title, undefined, [
-      { onPress: openRename, text: 'Rename' },
-      {
-        onPress: () => {
-          void trashJots([jot.id])
-            .then(() => router.replace('/'))
-            .catch(() => undefined);
+    const nextKind: JotKind = jot.kind === 'list' ? 'document' : 'list';
+    const nextLabel = nextKind === 'list' ? 'list' : 'free write';
+    const explanation = nextKind === 'document'
+      ? 'Each list item will become its own line. Completed items will use [x] and unfinished items will use a dash.'
+      : 'Each non-empty line will become a list item. Bullets and checkbox markers will be cleaned up automatically.';
+
+    setIsOptionsOpen(false);
+    setTimeout(() => {
+      Alert.alert(`Switch to ${nextLabel}?`, explanation, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          onPress: () => {
+            void changeJotKind(jot.id, nextKind).catch(() => {
+              Alert.alert('Couldn’t change the jot type', 'Check your connection and try again.');
+            });
+          },
+          text: 'Switch',
         },
-        style: 'destructive',
-        text: 'Move to Trash',
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+      ]);
+    }, 250);
+  }
+
+  function confirmMoveToTrash() {
+    if (!jot) return;
+
+    setIsOptionsOpen(false);
+    setTimeout(() => {
+      Alert.alert('Move to Trash?', `“${jot.title}” will be deleted permanently after 30 days.`, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          onPress: () => {
+            void trashJots([jot.id])
+              .then(() => router.replace('/'))
+              .catch(() => undefined);
+          },
+          style: 'destructive',
+          text: 'Move to Trash',
+        },
+      ]);
+    }, 250);
   }
 
   if (isLoading) {
@@ -247,6 +364,19 @@ export default function JotScreen() {
       visible={isRenameOpen}
     />
   );
+  const optionsModal = (
+    <JotOptionsModal
+      kind={jot.kind}
+      onChangeKind={confirmJotKindChange}
+      onClose={() => setIsOptionsOpen(false)}
+      onRename={() => {
+        setIsOptionsOpen(false);
+        setTimeout(openRename, 250);
+      }}
+      onTrash={confirmMoveToTrash}
+      visible={isOptionsOpen}
+    />
+  );
 
   if (jot.kind === 'document') {
     const wordCount = jot.documentContent.trim()
@@ -258,7 +388,11 @@ export default function JotScreen() {
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardView}>
-          <JotHeader onMore={showJotOptions} onRename={openRename} title={jot.title} />
+          <JotHeader
+            onMore={() => setIsOptionsOpen(true)}
+            onRename={openRename}
+            title={jot.title}
+          />
           <View style={styles.documentContent}>
             <Pressable
               accessibilityHint="Opens the rename form"
@@ -285,6 +419,7 @@ export default function JotScreen() {
             />
           </View>
         </KeyboardAvoidingView>
+        {optionsModal}
         {renameModal}
       </SafeAreaView>
     );
@@ -297,7 +432,11 @@ export default function JotScreen() {
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}>
-        <JotHeader onMore={showJotOptions} onRename={openRename} title={jot.title} />
+        <JotHeader
+          onMore={() => setIsOptionsOpen(true)}
+          onRename={openRename}
+          title={jot.title}
+        />
 
         <ScrollView
           contentContainerStyle={styles.content}
@@ -380,6 +519,7 @@ export default function JotScreen() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+      {optionsModal}
       {renameModal}
     </SafeAreaView>
   );
@@ -537,6 +677,72 @@ const styles = StyleSheet.create({
   },
   addButtonDisabled: { backgroundColor: '#B9C4BE' },
   addButtonLabel: { color: '#FFFFFF', fontSize: 25, fontWeight: '700', lineHeight: 27 },
+  optionsBackdrop: {
+    backgroundColor: 'rgba(20, 29, 25, 0.46)',
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  optionsCard: {
+    backgroundColor: '#FBFAF6',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    gap: 8,
+    paddingBottom: 28,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+  },
+  optionsHandle: {
+    alignSelf: 'center',
+    backgroundColor: '#C8CCC8',
+    borderRadius: 2,
+    height: 4,
+    marginBottom: 8,
+    width: 40,
+  },
+  optionsHeading: {
+    color: '#17231E',
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 4,
+    paddingHorizontal: 4,
+  },
+  optionRow: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E6E3DB',
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 13,
+    minHeight: 68,
+    padding: 12,
+  },
+  optionRowPressed: { backgroundColor: '#F0F2EE' },
+  optionIcon: {
+    alignItems: 'center',
+    backgroundColor: '#E8F0EC',
+    borderRadius: 12,
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
+  },
+  optionIconText: { color: '#25634D', fontSize: 18, fontWeight: '700' },
+  optionIconDanger: { backgroundColor: '#FDECEA' },
+  optionIconDangerText: { color: '#A7372F', fontSize: 21 },
+  optionCopy: { flex: 1, gap: 3 },
+  optionTitle: { color: '#203029', fontSize: 15, fontWeight: '700' },
+  optionDangerTitle: { color: '#A7372F', fontSize: 15, fontWeight: '700' },
+  optionDescription: { color: '#7A867F', fontSize: 12, lineHeight: 16 },
+  optionsCancelButton: {
+    alignItems: 'center',
+    borderColor: '#D9D8D0',
+    borderRadius: 15,
+    borderWidth: 1,
+    justifyContent: 'center',
+    marginTop: 4,
+    minHeight: 50,
+  },
+  optionsCancelLabel: { color: '#52625A', fontSize: 15, fontWeight: '700' },
   renameBackdrop: {
     alignItems: 'center',
     backgroundColor: 'rgba(20, 29, 25, 0.46)',

@@ -27,6 +27,7 @@ export type { Jot, JotEntry, JotKind } from '@/lib/firebase-jots';
 
 type JotsContextValue = {
   addEntry: (jotId: string, text: string) => void;
+  changeJotKind: (jotId: string, kind: JotKind) => Promise<void>;
   createJot: (title: string, kind: JotKind) => Jot;
   deleteJotPermanently: (jotId: string) => Promise<void>;
   isLoading: boolean;
@@ -47,6 +48,37 @@ function createId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function listEntriesToDocument(jot: Jot) {
+  return jot.entries
+    .map((entry) => `${entry.completed ? '[x]' : '-'} ${entry.text}`)
+    .join('\n');
+}
+
+function documentToListEntries(content: string) {
+  const now = Date.now();
+
+  return content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => {
+      const completed = /^(?:[-*•]\s*)?(?:\[[xX]\]|☑|✓|✔)\s*/.test(line);
+      const text = line
+        .replace(/^(?:[-*•]\s*)?(?:\[[xX]\]|☑|✓|✔)\s*/, '')
+        .replace(/^(?:[-*•]\s*)?(?:\[\s\])\s*/, '')
+        .replace(/^(?:[-*•]|\d+[.)])\s+/, '')
+        .trim();
+
+      return {
+        completed,
+        createdAt: now + index,
+        id: createId(),
+        text,
+      };
+    })
+    .filter((entry) => Boolean(entry.text));
+}
+
 export function JotsProvider({ children }: PropsWithChildren) {
   const { user } = useAuth();
   const [jots, setJots] = useState<Jot[]>([]);
@@ -55,6 +87,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
   const jotsRef = useRef<Jot[]>([]);
   const encryptionKeyRef = useRef<JotEncryptionKey | null>(null);
   const documentSaveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const jotSaveChains = useRef(new Map<string, Promise<void>>());
 
   function replaceJots(nextJots: Jot[]) {
     jotsRef.current = nextJots;
@@ -64,6 +97,23 @@ export function JotsProvider({ children }: PropsWithChildren) {
   function reportSyncError(error: unknown) {
     console.error('Jot sync failed:', error);
     setSyncError('Your changes could not be synced. Check your connection and try again.');
+  }
+
+  function persistJotChanges(jot: Jot) {
+    const encryptionKey = encryptionKeyRef.current;
+    if (!encryptionKey) return Promise.reject(new Error('Jot encryption is not ready yet.'));
+
+    const previousSave = jotSaveChains.current.get(jot.id) ?? Promise.resolve();
+    const nextSave = previousSave
+      .catch(() => undefined)
+      .then(() => saveJotChanges(jot, encryptionKey));
+
+    jotSaveChains.current.set(jot.id, nextSave);
+    return nextSave.finally(() => {
+      if (jotSaveChains.current.get(jot.id) === nextSave) {
+        jotSaveChains.current.delete(jot.id);
+      }
+    });
   }
 
   useEffect(() => {
@@ -165,9 +215,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
     }));
 
     if (updatedJot) {
-      const encryptionKey = encryptionKeyRef.current;
-      if (!encryptionKey) return;
-      void saveJotChanges(updatedJot, encryptionKey).catch(reportSyncError);
+      void persistJotChanges(updatedJot).catch(reportSyncError);
     }
   }
 
@@ -181,9 +229,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
     }));
 
     if (updatedJot) {
-      const encryptionKey = encryptionKeyRef.current;
-      if (!encryptionKey) return;
-      void saveJotChanges(updatedJot, encryptionKey).catch(reportSyncError);
+      void persistJotChanges(updatedJot).catch(reportSyncError);
     }
   }
 
@@ -201,10 +247,9 @@ export function JotsProvider({ children }: PropsWithChildren) {
 
     const timer = setTimeout(() => {
       documentSaveTimers.current.delete(jotId);
-      const encryptionKey = encryptionKeyRef.current;
       const latestJot = jotsRef.current.find((jot) => jot.id === jotId);
-      if (!encryptionKey || !latestJot) return;
-      void saveJotChanges(latestJot, encryptionKey).catch(reportSyncError);
+      if (!latestJot) return;
+      void persistJotChanges(latestJot).catch(reportSyncError);
     }, 400);
 
     documentSaveTimers.current.set(jotId, timer);
@@ -223,15 +268,40 @@ export function JotsProvider({ children }: PropsWithChildren) {
       title: trimmedTitle,
       updatedAt: Date.now(),
     }));
-    const encryptionKey = encryptionKeyRef.current;
-
-    if (!updatedJot || !encryptionKey) {
+    if (!updatedJot) {
       replaceJots(previousJots);
       throw new Error('Jot encryption is not ready yet.');
     }
 
     try {
-      await saveJotChanges(updatedJot, encryptionKey);
+      await persistJotChanges(updatedJot);
+    } catch (error) {
+      replaceJots(previousJots);
+      reportSyncError(error);
+      throw error;
+    }
+  }
+
+  async function changeJotKind(jotId: string, kind: JotKind) {
+    const previousJots = jotsRef.current;
+    const currentJot = previousJots.find((jot) => jot.id === jotId);
+    if (!currentJot || currentJot.kind === kind) return;
+
+    const updatedJot = updateLocalJot(jotId, (jot) => ({
+      ...jot,
+      documentContent: kind === 'document' ? listEntriesToDocument(jot) : jot.documentContent,
+      emoji: kind === 'list' ? '☷' : 'Aa',
+      entries: kind === 'list' ? documentToListEntries(jot.documentContent) : jot.entries,
+      kind,
+      updatedAt: Date.now(),
+    }));
+    if (!updatedJot) {
+      replaceJots(previousJots);
+      throw new Error('Jot encryption is not ready yet.');
+    }
+
+    try {
+      await persistJotChanges(updatedJot);
     } catch (error) {
       replaceJots(previousJots);
       reportSyncError(error);
@@ -294,6 +364,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
     <JotsContext.Provider
       value={{
         addEntry,
+        changeJotKind,
         createJot,
         deleteJotPermanently,
         isLoading,
