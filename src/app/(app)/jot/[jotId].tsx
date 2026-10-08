@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -16,7 +17,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useJots } from '@/providers/jots-provider';
 
-function JotHeader({ onMore, title }: { onMore: () => void; title: string }) {
+const JOT_TITLE_MAX_LENGTH = 100;
+
+type JotHeaderProps = {
+  onMore: () => void;
+  onRename: () => void;
+  title: string;
+};
+
+function JotHeader({ onMore, onRename, title }: JotHeaderProps) {
   return (
     <View style={styles.header}>
       <Pressable
@@ -27,7 +36,14 @@ function JotHeader({ onMore, title }: { onMore: () => void; title: string }) {
         style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
         <Text style={styles.backIcon}>‹</Text>
       </Pressable>
-      <Text numberOfLines={1} style={styles.headerTitle}>{title}</Text>
+      <Pressable
+        accessibilityHint="Opens the rename form"
+        accessibilityLabel={`${title}. Rename jot`}
+        accessibilityRole="button"
+        onPress={onRename}
+        style={({ pressed }) => [styles.headerTitleButton, pressed && styles.pressed]}>
+        <Text numberOfLines={1} style={styles.headerTitle}>{title}</Text>
+      </Pressable>
       <Pressable
         accessibilityLabel="Jot options"
         accessibilityRole="button"
@@ -40,10 +56,101 @@ function JotHeader({ onMore, title }: { onMore: () => void; title: string }) {
   );
 }
 
+type RenameJotModalProps = {
+  error: string;
+  isSaving: boolean;
+  onCancel: () => void;
+  onChangeTitle: (title: string) => void;
+  onSave: () => void;
+  title: string;
+  visible: boolean;
+};
+
+function RenameJotModal({
+  error,
+  isSaving,
+  onCancel,
+  onChangeTitle,
+  onSave,
+  title,
+  visible,
+}: RenameJotModalProps) {
+  const canSave = Boolean(title.trim()) && !isSaving;
+
+  return (
+    <Modal
+      animationType="fade"
+      onRequestClose={onCancel}
+      presentationStyle="overFullScreen"
+      transparent
+      visible={visible}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.renameBackdrop}>
+        <View accessibilityViewIsModal style={styles.renameCard}>
+          <Text accessibilityRole="header" style={styles.renameHeading}>Rename jot</Text>
+          <Text style={styles.renameDescription}>
+            Choose a short name that is easy for everyone to recognize.
+          </Text>
+          <TextInput
+            accessibilityLabel="Jot name"
+            autoFocus
+            enterKeyHint="done"
+            maxLength={JOT_TITLE_MAX_LENGTH}
+            onChangeText={onChangeTitle}
+            onSubmitEditing={() => {
+              if (canSave) onSave();
+            }}
+            placeholder="Jot name"
+            placeholderTextColor="#909A95"
+            returnKeyType="done"
+            selectTextOnFocus
+            selectionColor="#25634D"
+            style={styles.renameInput}
+            value={title}
+          />
+          <Text style={styles.renameCharacterCount}>
+            {title.length}/{JOT_TITLE_MAX_LENGTH}
+          </Text>
+          {error ? <Text style={styles.renameError}>{error}</Text> : null}
+          <View style={styles.renameActions}>
+            <Pressable
+              accessibilityRole="button"
+              disabled={isSaving}
+              onPress={onCancel}
+              style={({ pressed }) => [styles.renameCancelButton, pressed && styles.pressed]}>
+              <Text style={styles.renameCancelLabel}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={!canSave}
+              onPress={onSave}
+              style={({ pressed }) => [
+                styles.renameSaveButton,
+                !canSave && styles.renameSaveButtonDisabled,
+                pressed && canSave && styles.pressed,
+              ]}>
+              {isSaving ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.renameSaveLabel}>Save</Text>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
 export default function JotScreen() {
   const { jotId } = useLocalSearchParams<{ jotId: string }>();
-  const { addEntry, isLoading, jots, toggleEntry, trashJots, updateDocument } = useJots();
+  const { addEntry, isLoading, jots, renameJot, toggleEntry, trashJots, updateDocument } = useJots();
   const [draft, setDraft] = useState('');
+  const [isRenameOpen, setIsRenameOpen] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [renameError, setRenameError] = useState('');
   const scrollViewRef = useRef<ScrollView>(null);
   const jot = jots.find((candidate) => candidate.id === jotId);
 
@@ -53,11 +160,39 @@ export default function JotScreen() {
     setDraft('');
   }
 
+  function openRename() {
+    if (!jot) return;
+    setRenameDraft(jot.title);
+    setRenameError('');
+    setIsRenameOpen(true);
+  }
+
+  function closeRename() {
+    if (isRenaming) return;
+    setIsRenameOpen(false);
+    setRenameError('');
+  }
+
+  async function handleRename() {
+    if (!jot || !renameDraft.trim() || isRenaming) return;
+
+    setIsRenaming(true);
+    setRenameError('');
+    try {
+      await renameJot(jot.id, renameDraft);
+      setIsRenameOpen(false);
+    } catch {
+      setRenameError('The name could not be saved. Check your connection and try again.');
+    } finally {
+      setIsRenaming(false);
+    }
+  }
+
   function showJotOptions() {
     if (!jot) return;
 
     Alert.alert(jot.title, undefined, [
-      { text: 'Cancel', style: 'cancel' },
+      { onPress: openRename, text: 'Rename' },
       {
         onPress: () => {
           void trashJots([jot.id])
@@ -67,6 +202,7 @@ export default function JotScreen() {
         style: 'destructive',
         text: 'Move to Trash',
       },
+      { text: 'Cancel', style: 'cancel' },
     ]);
   }
 
@@ -100,6 +236,18 @@ export default function JotScreen() {
     );
   }
 
+  const renameModal = (
+    <RenameJotModal
+      error={renameError}
+      isSaving={isRenaming}
+      onCancel={closeRename}
+      onChangeTitle={setRenameDraft}
+      onSave={() => void handleRename()}
+      title={renameDraft}
+      visible={isRenameOpen}
+    />
+  );
+
   if (jot.kind === 'document') {
     const wordCount = jot.documentContent.trim()
       ? jot.documentContent.trim().split(/\s+/).length
@@ -110,9 +258,16 @@ export default function JotScreen() {
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardView}>
-          <JotHeader onMore={showJotOptions} title={jot.title} />
+          <JotHeader onMore={showJotOptions} onRename={openRename} title={jot.title} />
           <View style={styles.documentContent}>
-            <Text accessibilityRole="header" style={styles.documentTitle}>{jot.title}</Text>
+            <Pressable
+              accessibilityHint="Opens the rename form"
+              accessibilityLabel={`${jot.title}. Rename jot`}
+              accessibilityRole="button"
+              onPress={openRename}
+              style={({ pressed }) => pressed && styles.titlePressed}>
+              <Text accessibilityRole="header" style={styles.documentTitle}>{jot.title}</Text>
+            </Pressable>
             <Text style={styles.documentMeta}>
               Free write · {wordCount} {wordCount === 1 ? 'word' : 'words'}
             </Text>
@@ -130,6 +285,7 @@ export default function JotScreen() {
             />
           </View>
         </KeyboardAvoidingView>
+        {renameModal}
       </SafeAreaView>
     );
   }
@@ -141,7 +297,7 @@ export default function JotScreen() {
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}>
-        <JotHeader onMore={showJotOptions} title={jot.title} />
+        <JotHeader onMore={showJotOptions} onRename={openRename} title={jot.title} />
 
         <ScrollView
           contentContainerStyle={styles.content}
@@ -153,7 +309,14 @@ export default function JotScreen() {
             <View style={[styles.jotIcon, { backgroundColor: jot.accent }]}>
               <Text style={styles.jotEmoji}>{jot.emoji}</Text>
             </View>
-            <Text accessibilityRole="header" style={styles.title}>{jot.title}</Text>
+            <Pressable
+              accessibilityHint="Opens the rename form"
+              accessibilityLabel={`${jot.title}. Rename jot`}
+              accessibilityRole="button"
+              onPress={openRename}
+              style={({ pressed }) => pressed && styles.titlePressed}>
+              <Text accessibilityRole="header" style={styles.title}>{jot.title}</Text>
+            </Pressable>
             <Text style={styles.summary}>
               {jot.entries.length
                 ? `${completedCount} of ${jot.entries.length} completed`
@@ -217,6 +380,7 @@ export default function JotScreen() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+      {renameModal}
     </SafeAreaView>
   );
 }
@@ -239,9 +403,9 @@ const styles = StyleSheet.create({
     width: 42,
   },
   backIcon: { color: '#25634D', fontSize: 38, fontWeight: '300', lineHeight: 39 },
+  headerTitleButton: { flex: 1 },
   headerTitle: {
     color: '#1D2B25',
-    flex: 1,
     fontSize: 17,
     fontWeight: '700',
     textAlign: 'center',
@@ -297,6 +461,7 @@ const styles = StyleSheet.create({
     letterSpacing: -1.3,
     lineHeight: 43,
   },
+  titlePressed: { opacity: 0.58 },
   summary: { color: '#758179', fontSize: 14 },
   entryList: { gap: 10 },
   entryCard: {
@@ -372,6 +537,65 @@ const styles = StyleSheet.create({
   },
   addButtonDisabled: { backgroundColor: '#B9C4BE' },
   addButtonLabel: { color: '#FFFFFF', fontSize: 25, fontWeight: '700', lineHeight: 27 },
+  renameBackdrop: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(20, 29, 25, 0.46)',
+    flex: 1,
+    justifyContent: 'center',
+    padding: 24,
+  },
+  renameCard: {
+    backgroundColor: '#FBFAF6',
+    borderRadius: 24,
+    maxWidth: 460,
+    padding: 22,
+    shadowColor: '#15221C',
+    shadowOffset: { height: 12, width: 0 },
+    shadowOpacity: 0.2,
+    shadowRadius: 28,
+    width: '100%',
+  },
+  renameHeading: { color: '#17231E', fontSize: 25, fontWeight: '700' },
+  renameDescription: { color: '#718078', fontSize: 14, lineHeight: 20, marginTop: 7 },
+  renameInput: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#D9D8D0',
+    borderRadius: 15,
+    borderWidth: 1,
+    color: '#1D2B25',
+    fontSize: 17,
+    marginTop: 20,
+    minHeight: 52,
+    paddingHorizontal: 15,
+  },
+  renameCharacterCount: {
+    color: '#89938E',
+    fontSize: 11,
+    marginTop: 6,
+    textAlign: 'right',
+  },
+  renameError: { color: '#A7372F', fontSize: 13, lineHeight: 18, marginTop: 8 },
+  renameActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  renameCancelButton: {
+    alignItems: 'center',
+    borderColor: '#D9D8D0',
+    borderRadius: 14,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  renameCancelLabel: { color: '#52625A', fontSize: 15, fontWeight: '700' },
+  renameSaveButton: {
+    alignItems: 'center',
+    backgroundColor: '#25634D',
+    borderRadius: 14,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  renameSaveButtonDisabled: { backgroundColor: '#AEBAB4' },
+  renameSaveLabel: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
   pressed: { opacity: 0.62 },
   loadingState: { alignItems: 'center', flex: 1, gap: 12, justifyContent: 'center' },
   loadingLabel: { color: '#6F7C75', fontSize: 14 },

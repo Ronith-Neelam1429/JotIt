@@ -31,6 +31,7 @@ type JotsContextValue = {
   deleteJotPermanently: (jotId: string) => Promise<void>;
   isLoading: boolean;
   jots: Jot[];
+  renameJot: (jotId: string, title: string) => Promise<void>;
   restoreJot: (jotId: string) => Promise<void>;
   syncError: string | null;
   toggleEntry: (jotId: string, entryId: string) => void;
@@ -201,11 +202,41 @@ export function JotsProvider({ children }: PropsWithChildren) {
     const timer = setTimeout(() => {
       documentSaveTimers.current.delete(jotId);
       const encryptionKey = encryptionKeyRef.current;
-      if (!encryptionKey) return;
-      void saveJotChanges(updatedJot, encryptionKey).catch(reportSyncError);
+      const latestJot = jotsRef.current.find((jot) => jot.id === jotId);
+      if (!encryptionKey || !latestJot) return;
+      void saveJotChanges(latestJot, encryptionKey).catch(reportSyncError);
     }, 400);
 
     documentSaveTimers.current.set(jotId, timer);
+  }
+
+  async function renameJot(jotId: string, title: string) {
+    const trimmedTitle = title.trim().slice(0, 100);
+    if (!trimmedTitle) throw new Error('A jot needs a name.');
+
+    const previousJots = jotsRef.current;
+    const currentJot = previousJots.find((jot) => jot.id === jotId);
+    if (!currentJot || currentJot.title === trimmedTitle) return;
+
+    const updatedJot = updateLocalJot(jotId, (jot) => ({
+      ...jot,
+      title: trimmedTitle,
+      updatedAt: Date.now(),
+    }));
+    const encryptionKey = encryptionKeyRef.current;
+
+    if (!updatedJot || !encryptionKey) {
+      replaceJots(previousJots);
+      throw new Error('Jot encryption is not ready yet.');
+    }
+
+    try {
+      await saveJotChanges(updatedJot, encryptionKey);
+    } catch (error) {
+      replaceJots(previousJots);
+      reportSyncError(error);
+      throw error;
+    }
   }
 
   async function trashJots(jotIds: string[]) {
@@ -267,6 +298,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
         deleteJotPermanently,
         isLoading,
         jots: activeJots,
+        renameJot,
         restoreJot,
         syncError,
         toggleEntry,
