@@ -1,5 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
+import { Swipeable } from 'react-native-gesture-handler';
 import {
   ActivityIndicator,
   Alert,
@@ -230,6 +231,7 @@ export default function JotScreen() {
     changeJotKind,
     isLoading,
     jots,
+    removeEntry,
     renameJot,
     toggleEntry,
     trashJots,
@@ -241,6 +243,7 @@ export default function JotScreen() {
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
   const [renameError, setRenameError] = useState('');
+  const longPressedEntryRef = useRef<string | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const jot = jots.find((candidate) => candidate.id === jotId);
 
@@ -248,6 +251,17 @@ export default function JotScreen() {
     if (!jot || !draft.trim()) return;
     addEntry(jot.id, draft);
     setDraft('');
+  }
+
+  function confirmRemoveEntry(entryId: string, entryText: string) {
+    Alert.alert('Delete list item?', `“${entryText}” will be removed from this jot.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        onPress: () => removeEntry(jotId, entryId),
+        style: 'destructive',
+        text: 'Delete',
+      },
+    ]);
   }
 
   function openRename() {
@@ -466,20 +480,50 @@ export default function JotScreen() {
           {jot.entries.length ? (
             <View style={styles.entryList}>
               {jot.entries.map((entry) => (
-                <Pressable
-                  accessibilityLabel={`${entry.completed ? 'Mark incomplete' : 'Mark complete'}: ${entry.text}`}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: entry.completed }}
+                <Swipeable
+                  containerStyle={styles.entrySwipeable}
                   key={entry.id}
-                  onPress={() => toggleEntry(jot.id, entry.id)}
-                  style={({ pressed }) => [styles.entryCard, pressed && styles.pressed]}>
-                  <View style={[styles.checkbox, entry.completed && styles.checkboxCompleted]}>
-                    {entry.completed ? <Text style={styles.checkmark}>✓</Text> : null}
-                  </View>
-                  <Text style={[styles.entryText, entry.completed && styles.entryTextCompleted]}>
-                    {entry.text}
-                  </Text>
-                </Pressable>
+                  overshootRight={false}
+                  renderRightActions={() => (
+                    <Pressable
+                      accessibilityLabel={`Delete ${entry.text}`}
+                      accessibilityRole="button"
+                      onPress={() => removeEntry(jot.id, entry.id)}
+                      style={({ pressed }) => [styles.deleteAction, pressed && styles.deleteActionPressed]}>
+                      <Text style={styles.deleteActionLabel}>Delete</Text>
+                    </Pressable>
+                  )}>
+                  <Pressable
+                    accessibilityHint="Swipe left to reveal delete, or touch and hold to delete"
+                    accessibilityLabel={`${entry.completed ? 'Mark incomplete' : 'Mark complete'}: ${entry.text}`}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: entry.completed }}
+                    delayLongPress={500}
+                    onLongPress={() => {
+                      longPressedEntryRef.current = entry.id;
+                      setTimeout(() => {
+                        if (longPressedEntryRef.current === entry.id) {
+                          longPressedEntryRef.current = null;
+                        }
+                      }, 1000);
+                      confirmRemoveEntry(entry.id, entry.text);
+                    }}
+                    onPress={() => {
+                      if (longPressedEntryRef.current === entry.id) {
+                        longPressedEntryRef.current = null;
+                        return;
+                      }
+                      toggleEntry(jot.id, entry.id);
+                    }}
+                    style={({ pressed }) => [styles.entryCard, pressed && styles.pressed]}>
+                    <View style={[styles.checkbox, entry.completed && styles.checkboxCompleted]}>
+                      {entry.completed ? <Text style={styles.checkmark}>✓</Text> : null}
+                    </View>
+                    <Text style={[styles.entryText, entry.completed && styles.entryTextCompleted]}>
+                      {entry.text}
+                    </Text>
+                  </Pressable>
+                </Swipeable>
               ))}
             </View>
           ) : (
@@ -604,16 +648,26 @@ const styles = StyleSheet.create({
   titlePressed: { opacity: 0.58 },
   summary: { color: '#758179', fontSize: 14 },
   entryList: { gap: 10 },
+  entrySwipeable: { borderRadius: 17, overflow: 'hidden' },
   entryCard: {
     alignItems: 'flex-start',
     backgroundColor: '#FFFFFF',
     borderColor: '#E8E5DD',
-    borderRadius: 17,
+    borderRadius: 0,
     borderWidth: 1,
     flexDirection: 'row',
     gap: 13,
     padding: 16,
   },
+  deleteAction: {
+    alignItems: 'center',
+    backgroundColor: '#B83C36',
+    justifyContent: 'center',
+    minWidth: 88,
+    paddingHorizontal: 16,
+  },
+  deleteActionPressed: { backgroundColor: '#982D28' },
+  deleteActionLabel: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
   checkbox: {
     alignItems: 'center',
     borderColor: '#A6B2AB',

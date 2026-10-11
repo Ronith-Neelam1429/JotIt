@@ -32,6 +32,7 @@ type JotsContextValue = {
   deleteJotPermanently: (jotId: string) => Promise<void>;
   isLoading: boolean;
   jots: Jot[];
+  removeEntry: (jotId: string, entryId: string) => void;
   renameJot: (jotId: string, title: string) => Promise<void>;
   restoreJot: (jotId: string) => Promise<void>;
   syncError: string | null;
@@ -233,6 +234,18 @@ export function JotsProvider({ children }: PropsWithChildren) {
     }
   }
 
+  function removeEntry(jotId: string, entryId: string) {
+    const updatedJot = updateLocalJot(jotId, (jot) => ({
+      ...jot,
+      entries: jot.entries.filter((entry) => entry.id !== entryId),
+      updatedAt: Date.now(),
+    }));
+
+    if (updatedJot) {
+      void persistJotChanges(updatedJot).catch(reportSyncError);
+    }
+  }
+
   function updateDocument(jotId: string, content: string) {
     const updatedJot = updateLocalJot(jotId, (jot) => ({
       ...jot,
@@ -369,6 +382,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
         deleteJotPermanently,
         isLoading,
         jots: activeJots,
+        removeEntry,
         renameJot,
         restoreJot,
         syncError,
