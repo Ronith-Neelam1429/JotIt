@@ -33,7 +33,9 @@ type JotsContextValue = {
   isLoading: boolean;
   jots: Jot[];
   removeEntry: (jotId: string, entryId: string) => void;
+  renameEntry: (jotId: string, entryId: string, text: string) => void;
   renameJot: (jotId: string, title: string) => Promise<void>;
+  reorderEntries: (jotId: string, entryIds: string[]) => void;
   restoreJot: (jotId: string) => Promise<void>;
   syncError: string | null;
   toggleEntry: (jotId: string, entryId: string) => void;
@@ -246,6 +248,43 @@ export function JotsProvider({ children }: PropsWithChildren) {
     }
   }
 
+  function renameEntry(jotId: string, entryId: string, text: string) {
+    const trimmedText = text.trim().slice(0, 500);
+    if (!trimmedText) return;
+
+    const updatedJot = updateLocalJot(jotId, (jot) => ({
+      ...jot,
+      entries: jot.entries.map((entry) =>
+        entry.id === entryId ? { ...entry, text: trimmedText } : entry,
+      ),
+      updatedAt: Date.now(),
+    }));
+
+    if (updatedJot) {
+      void persistJotChanges(updatedJot).catch(reportSyncError);
+    }
+  }
+
+  function reorderEntries(jotId: string, entryIds: string[]) {
+    const currentJot = jotsRef.current.find((jot) => jot.id === jotId);
+    if (!currentJot || currentJot.entries.length !== entryIds.length) return;
+
+    const entriesById = new Map(currentJot.entries.map((entry) => [entry.id, entry]));
+    const reorderedEntries = entryIds.map((entryId) => entriesById.get(entryId));
+    if (reorderedEntries.some((entry) => !entry)) return;
+    if (entryIds.every((entryId, index) => currentJot.entries[index]?.id === entryId)) return;
+
+    const updatedJot = updateLocalJot(jotId, (jot) => ({
+      ...jot,
+      entries: reorderedEntries as Jot['entries'],
+      updatedAt: Date.now(),
+    }));
+
+    if (updatedJot) {
+      void persistJotChanges(updatedJot).catch(reportSyncError);
+    }
+  }
+
   function updateDocument(jotId: string, content: string) {
     const updatedJot = updateLocalJot(jotId, (jot) => ({
       ...jot,
@@ -383,7 +422,9 @@ export function JotsProvider({ children }: PropsWithChildren) {
         isLoading,
         jots: activeJots,
         removeEntry,
+        renameEntry,
         renameJot,
+        reorderEntries,
         restoreJot,
         syncError,
         toggleEntry,

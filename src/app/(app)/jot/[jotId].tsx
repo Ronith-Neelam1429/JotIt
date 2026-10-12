@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useRef, useState } from 'react';
-import { Swipeable } from 'react-native-gesture-handler';
+import { useState } from 'react';
+import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import {
   ActivityIndicator,
   Alert,
@@ -8,7 +8,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -16,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { JotEntryRow } from '@/components/jot-entry-row';
 import { type JotKind, useJots } from '@/providers/jots-provider';
 
 const JOT_TITLE_MAX_LENGTH = 100;
@@ -232,7 +232,9 @@ export default function JotScreen() {
     isLoading,
     jots,
     removeEntry,
+    renameEntry,
     renameJot,
+    reorderEntries,
     toggleEntry,
     trashJots,
     updateDocument,
@@ -243,8 +245,6 @@ export default function JotScreen() {
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
   const [renameError, setRenameError] = useState('');
-  const longPressedEntryRef = useRef<string | null>(null);
-  const scrollViewRef = useRef<ScrollView>(null);
   const jot = jots.find((candidate) => candidate.id === jotId);
 
   function handleAddEntry() {
@@ -452,81 +452,13 @@ export default function JotScreen() {
           title={jot.title}
         />
 
-        <ScrollView
+        <DraggableFlatList
           contentContainerStyle={styles.content}
+          data={jot.entries}
+          ItemSeparatorComponent={() => <View style={styles.entrySeparator} />}
           keyboardShouldPersistTaps="handled"
-          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-          ref={scrollViewRef}
-          showsVerticalScrollIndicator={false}>
-          <View style={styles.titleSection}>
-            <View style={[styles.jotIcon, { backgroundColor: jot.accent }]}>
-              <Text style={styles.jotEmoji}>{jot.emoji}</Text>
-            </View>
-            <Pressable
-              accessibilityHint="Opens the rename form"
-              accessibilityLabel={`${jot.title}. Rename jot`}
-              accessibilityRole="button"
-              onPress={openRename}
-              style={({ pressed }) => pressed && styles.titlePressed}>
-              <Text accessibilityRole="header" style={styles.title}>{jot.title}</Text>
-            </Pressable>
-            <Text style={styles.summary}>
-              {jot.entries.length
-                ? `${completedCount} of ${jot.entries.length} completed`
-                : 'Ready for your first entry'}
-            </Text>
-          </View>
-
-          {jot.entries.length ? (
-            <View style={styles.entryList}>
-              {jot.entries.map((entry) => (
-                <Swipeable
-                  containerStyle={styles.entrySwipeable}
-                  key={entry.id}
-                  overshootRight={false}
-                  renderRightActions={() => (
-                    <Pressable
-                      accessibilityLabel={`Delete ${entry.text}`}
-                      accessibilityRole="button"
-                      onPress={() => removeEntry(jot.id, entry.id)}
-                      style={({ pressed }) => [styles.deleteAction, pressed && styles.deleteActionPressed]}>
-                      <Text style={styles.deleteActionLabel}>Delete</Text>
-                    </Pressable>
-                  )}>
-                  <Pressable
-                    accessibilityHint="Swipe left to reveal delete, or touch and hold to delete"
-                    accessibilityLabel={`${entry.completed ? 'Mark incomplete' : 'Mark complete'}: ${entry.text}`}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: entry.completed }}
-                    delayLongPress={500}
-                    onLongPress={() => {
-                      longPressedEntryRef.current = entry.id;
-                      setTimeout(() => {
-                        if (longPressedEntryRef.current === entry.id) {
-                          longPressedEntryRef.current = null;
-                        }
-                      }, 1000);
-                      confirmRemoveEntry(entry.id, entry.text);
-                    }}
-                    onPress={() => {
-                      if (longPressedEntryRef.current === entry.id) {
-                        longPressedEntryRef.current = null;
-                        return;
-                      }
-                      toggleEntry(jot.id, entry.id);
-                    }}
-                    style={({ pressed }) => [styles.entryCard, pressed && styles.pressed]}>
-                    <View style={[styles.checkbox, entry.completed && styles.checkboxCompleted]}>
-                      {entry.completed ? <Text style={styles.checkmark}>✓</Text> : null}
-                    </View>
-                    <Text style={[styles.entryText, entry.completed && styles.entryTextCompleted]}>
-                      {entry.text}
-                    </Text>
-                  </Pressable>
-                </Swipeable>
-              ))}
-            </View>
-          ) : (
+          keyExtractor={(entry) => entry.id}
+          ListEmptyComponent={(
             <View style={styles.emptyState}>
               <Text style={styles.emptyMark}>✎</Text>
               <Text style={styles.emptyTitle}>Nothing here yet</Text>
@@ -535,7 +467,41 @@ export default function JotScreen() {
               </Text>
             </View>
           )}
-        </ScrollView>
+          ListHeaderComponent={(
+            <View style={styles.titleSection}>
+              <View style={[styles.jotIcon, { backgroundColor: jot.accent }]}>
+                <Text style={styles.jotEmoji}>{jot.emoji}</Text>
+              </View>
+              <Pressable
+                accessibilityHint="Opens the rename form"
+                accessibilityLabel={`${jot.title}. Rename jot`}
+                accessibilityRole="button"
+                onPress={openRename}
+                style={({ pressed }) => pressed && styles.titlePressed}>
+                <Text accessibilityRole="header" style={styles.title}>{jot.title}</Text>
+              </Pressable>
+              <Text style={styles.summary}>
+                {jot.entries.length
+                  ? `${completedCount} of ${jot.entries.length} completed`
+                  : 'Ready for your first entry'}
+              </Text>
+            </View>
+          )}
+          onDragEnd={({ data }) => reorderEntries(jot.id, data.map((entry) => entry.id))}
+          renderItem={({ drag, isActive, item }) => (
+            <ScaleDecorator activeScale={1.015}>
+              <JotEntryRow
+                entry={item}
+                isActive={isActive}
+                onDelete={() => confirmRemoveEntry(item.id, item.text)}
+                onDrag={drag}
+                onRename={(text) => renameEntry(jot.id, item.id, text)}
+                onToggle={() => toggleEntry(jot.id, item.id)}
+              />
+            </ScaleDecorator>
+          )}
+          showsVerticalScrollIndicator={false}
+        />
 
         <View style={styles.composer}>
           <TextInput
@@ -647,41 +613,7 @@ const styles = StyleSheet.create({
   },
   titlePressed: { opacity: 0.58 },
   summary: { color: '#758179', fontSize: 14 },
-  entryList: { gap: 10 },
-  entrySwipeable: { borderRadius: 17, overflow: 'hidden' },
-  entryCard: {
-    alignItems: 'flex-start',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E8E5DD',
-    borderRadius: 0,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 13,
-    padding: 16,
-  },
-  deleteAction: {
-    alignItems: 'center',
-    backgroundColor: '#B83C36',
-    justifyContent: 'center',
-    minWidth: 88,
-    paddingHorizontal: 16,
-  },
-  deleteActionPressed: { backgroundColor: '#982D28' },
-  deleteActionLabel: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  checkbox: {
-    alignItems: 'center',
-    borderColor: '#A6B2AB',
-    borderRadius: 11,
-    borderWidth: 1.5,
-    height: 22,
-    justifyContent: 'center',
-    marginTop: 1,
-    width: 22,
-  },
-  checkboxCompleted: { backgroundColor: '#25634D', borderColor: '#25634D' },
-  checkmark: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
-  entryText: { color: '#24332C', flex: 1, fontSize: 16, lineHeight: 23 },
-  entryTextCompleted: { color: '#8A958F', textDecorationLine: 'line-through' },
+  entrySeparator: { height: 10 },
   emptyState: {
     alignItems: 'center',
     borderColor: '#DEDBD2',
