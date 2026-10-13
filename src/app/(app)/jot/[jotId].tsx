@@ -175,7 +175,7 @@ export default function JotScreen() {
   }
 
   function confirmRemoveEntry(entryId: string, entryText: string) {
-    Alert.alert('Delete list item?', `“${entryText}” will be removed from this jot.`, [
+    Alert.alert('Delete list item?', `“${entryText}” will move to Deleted items, where you can restore it.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         onPress: () => removeEntry(jotId, entryId),

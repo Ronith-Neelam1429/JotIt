@@ -2,13 +2,16 @@ import { createContext, type PropsWithChildren, useContext, useEffect, useRef, u
 import { AppState } from 'react-native';
 
 import { permanentlyDeleteJot, saveJot, subscribeToJots } from '@/lib/firebase-jots';
-import { ACCENTS, createId, emptyContent, type Jot, type JotKind } from '@/lib/jot-model';
+import { ACCENTS, createId, deleteEntries, restoreEntry as restoreDeletedEntry, emptyContent, type Jot, type JotKind } from '@/lib/jot-model';
 import { getOrCreateJotEncryptionKey, type JotEncryptionKey } from '@/lib/jot-encryption';
 import { useAuth } from '@/providers/auth-provider';
 
 export type { Jot, JotEntry, JotKind } from '@/lib/jot-model';
 
 type JotsContextValue = {
+  completeAll: (id: string) => void;
+  clearCompleted: (id: string) => void;
+  restoreEntry: (id: string, entryId: string) => void;
   updateAppearance: (id: string, accent: string, emoji: string) => void;
   addEntry: (jotId: string, text: string) => void;
   changeJotKind: (jotId: string, kind: JotKind) => Promise<void>;
@@ -175,7 +178,16 @@ export function JotsProvider({ children }: PropsWithChildren) {
     edit(id, (jot) => ({ ...jot, entries: jot.entries.map((entry) => entry.id === entryId ? { ...entry, completed: !entry.completed } : entry) }));
   }
   function removeEntry(id: string, entryId: string) {
-    edit(id, (jot) => ({ ...jot, entries: jot.entries.filter((entry) => entry.id !== entryId) }));
+    edit(id, (jot) => deleteEntries(jot, [entryId]));
+  }
+  function completeAll(id: string) {
+    edit(id, (jot) => ({ ...jot, entries: jot.entries.map((entry) => ({ ...entry, completed: true })) }));
+  }
+  function clearCompleted(id: string) {
+    edit(id, (jot) => deleteEntries(jot, jot.entries.filter((entry) => entry.completed).map((entry) => entry.id)));
+  }
+  function restoreEntry(id: string, entryId: string) {
+    edit(id, (jot) => restoreDeletedEntry(jot, entryId));
   }
   function renameEntry(id: string, entryId: string, text: string) {
     if (!text.trim()) return;
@@ -229,7 +241,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
       throw error;
     }
   }
-  return <JotsContext.Provider value={{ updateAppearance, addEntry, changeJotKind, createJot, deleteJotPermanently,
+  return <JotsContext.Provider value={{ completeAll, clearCompleted, restoreEntry, updateAppearance, addEntry, changeJotKind, createJot, deleteJotPermanently,
     isLoading, isSaving, jots: jots.filter((jot) => jot.trashedAt === null), removeEntry, renameEntry,
     renameJot, reorderEntries, restoreJot, retrySync, syncError, toggleEntry, trashJots,
     trashedJots: jots.filter((jot) => jot.trashedAt !== null), updateDocument }}>{children}</JotsContext.Provider>;

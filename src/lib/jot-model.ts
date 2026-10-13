@@ -93,3 +93,18 @@ export function parseVersions(value: unknown): JotVersion[] {
     return content ? [{ id: version.id, savedAt: version.savedAt, label: typeof version.label === 'string' ? version.label : 'Edited jot', content }] : [];
   }).slice(-30);
 }
+
+export function deleteEntries(jot: Jot, ids: string[], now = Date.now()): Jot {
+  const removed = new Set(ids);
+  return { ...jot, entries: jot.entries.filter((entry) => !removed.has(entry.id)),
+    deletedEntries: [...jot.deletedEntries, ...jot.entries.flatMap((entry, position) =>
+      removed.has(entry.id) ? [{ ...entry, position, deletedAt: now }] : [])] };
+}
+export function restoreEntry(jot: Jot, id: string): Jot {
+  const entry = jot.deletedEntries.find((item) => item.id === id);
+  if (!entry) return jot;
+  const { deletedAt: _deletedAt, position, ...restored } = entry;
+  const entries = [...jot.entries];
+  if (!entries.some((item) => item.id === id)) entries.splice(Math.min(position, entries.length), 0, restored);
+  return { ...jot, entries, deletedEntries: jot.deletedEntries.filter((item) => item.id !== id) };
+}
