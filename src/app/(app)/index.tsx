@@ -23,13 +23,6 @@ import { ProfileAvatar } from '@/components/profile-avatar';
 import { useAuth } from '@/providers/auth-provider';
 import { type Jot, type JotKind, useJots } from '@/providers/jots-provider';
 
-function getGreeting() {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-  return 'Good evening';
-}
-
 function getJotPreview(jot: Jot) {
   if (jot.kind === 'list') {
     return jot.entries.at(-1)?.text ?? 'No entries yet';
@@ -66,11 +59,6 @@ export default function HomeScreen() {
   const [jotTitle, setJotTitle] = useState('');
   const [selectedJotIds, setSelectedJotIds] = useState<Set<string>>(new Set());
   const [selectedKind, setSelectedKind] = useState<JotKind | null>(null);
-
-  const firstName = useMemo(
-    () => user?.displayName?.trim().split(/\s+/)[0] || 'there',
-    [user?.displayName],
-  );
 
   function closeComposer() {
     setIsComposerOpen(false);
@@ -149,18 +137,6 @@ export default function HomeScreen() {
               />
             </Pressable>
           </Link>
-        </View>
-
-        <View style={styles.hero}>
-          <Text style={styles.eyebrow}>
-            {getGreeting()}, {firstName}
-          </Text>
-          <Text accessibilityRole="header" style={styles.heading}>
-            A place for every thought.
-          </Text>
-          <Text style={styles.description}>
-            Your lists, notes, and little reminders. All within reach.
-          </Text>
         </View>
 
         <View style={[ui.row, { marginBottom: 14 }]}>
@@ -492,22 +468,6 @@ const styles = StyleSheet.create({
   brand: { color: '#1D2B25', fontSize: 18, fontWeight: '800', letterSpacing: -0.4 },
   profileButton: { borderRadius: 22 },
   pressed: { opacity: 0.62 },
-  hero: { gap: 10, paddingBottom: 24, paddingTop: 28 },
-  eyebrow: {
-    color: '#567064',
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-  },
-  heading: {
-    color: '#17231E',
-    fontSize: 35,
-    fontWeight: '700',
-    letterSpacing: -1.1,
-    lineHeight: 40,
-  },
-  description: { color: '#66746D', fontSize: 15, lineHeight: 22, maxWidth: 360 },
   syncError: {
     backgroundColor: '#FBECE9',
     borderColor: '#F1C7C0',
