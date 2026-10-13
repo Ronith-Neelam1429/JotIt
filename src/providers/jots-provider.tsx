@@ -1,30 +1,12 @@
-import {
-  createContext,
-  type PropsWithChildren,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { createContext, type PropsWithChildren, useContext, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 
-import {
-  type Jot,
-  type JotKind,
-  moveJotsToTrash,
-  permanentlyDeleteJot,
-  restoreJotFromTrash,
-  saveJot,
-  saveJotChanges,
-  subscribeToJots,
-} from '@/lib/firebase-jots';
-import {
-  getOrCreateJotEncryptionKey,
-  type JotEncryptionKey,
-} from '@/lib/jot-encryption';
-import { emptyContent } from '@/lib/jot-model';
+import { permanentlyDeleteJot, saveJot, subscribeToJots } from '@/lib/firebase-jots';
+import { ACCENTS, createId, emptyContent, type Jot, type JotKind } from '@/lib/jot-model';
+import { getOrCreateJotEncryptionKey, type JotEncryptionKey } from '@/lib/jot-encryption';
 import { useAuth } from '@/providers/auth-provider';
 
-export type { Jot, JotEntry, JotKind } from '@/lib/firebase-jots';
+export type { Jot, JotEntry, JotKind } from '@/lib/jot-model';
 
 type JotsContextValue = {
   addEntry: (jotId: string, text: string) => void;
@@ -32,420 +14,224 @@ type JotsContextValue = {
   createJot: (title: string, kind: JotKind) => Jot;
   deleteJotPermanently: (jotId: string) => Promise<void>;
   isLoading: boolean;
+  isSaving: boolean;
   jots: Jot[];
   removeEntry: (jotId: string, entryId: string) => void;
   renameEntry: (jotId: string, entryId: string, text: string) => void;
   renameJot: (jotId: string, title: string) => Promise<void>;
   reorderEntries: (jotId: string, entryIds: string[]) => void;
   restoreJot: (jotId: string) => Promise<void>;
+  retrySync: () => void;
   syncError: string | null;
   toggleEntry: (jotId: string, entryId: string) => void;
   trashJots: (jotIds: string[]) => Promise<void>;
   trashedJots: Jot[];
   updateDocument: (jotId: string, content: string) => void;
 };
-
 const JotsContext = createContext<JotsContextValue | null>(null);
-const ACCENT_COLORS = ['#B9CBE8', '#B7D7CF', '#D8C7E8', '#F3C969', '#E9B8B4'];
-
-function createId() {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function listEntriesToDocument(jot: Jot) {
-  return jot.entries
-    .map((entry) => `${entry.completed ? '[x]' : '-'} ${entry.text}`)
-    .join('\n');
-}
-
-function documentToListEntries(content: string) {
-  const now = Date.now();
-
-  return content
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line, index) => {
-      const completed = /^(?:[-*•]\s*)?(?:\[[xX]\]|☑|✓|✔)\s*/.test(line);
-      const text = line
-        .replace(/^(?:[-*•]\s*)?(?:\[[xX]\]|☑|✓|✔)\s*/, '')
-        .replace(/^(?:[-*•]\s*)?(?:\[\s\])\s*/, '')
-        .replace(/^(?:[-*•]|\d+[.)])\s+/, '')
-        .trim();
-
-      return {
-        completed,
-        createdAt: now + index,
-        id: createId(),
-        text,
-      };
-    })
-    .filter((entry) => Boolean(entry.text));
-}
 
 export function JotsProvider({ children }: PropsWithChildren) {
   const { user } = useAuth();
+  const userId = user?.uid;
   const [jots, setJots] = useState<Jot[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const jotsRef = useRef<Jot[]>([]);
   const encryptionKeyRef = useRef<JotEncryptionKey | null>(null);
-  const documentSaveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
-  const jotSaveChains = useRef(new Map<string, Promise<void>>());
+  const dirtyJots = useRef(new Map<string, Jot>());
+  const saveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const saveChains = useRef(new Map<string, Promise<void>>());
+  const deletingIds = useRef(new Set<string>());
+  const session = useRef(0);
 
-  function replaceJots(nextJots: Jot[]) {
-    jotsRef.current = nextJots;
-    setJots(nextJots);
+  function replaceJots(next: Jot[]) {
+    jotsRef.current = next;
+    setJots(next);
   }
-
   function reportSyncError(error: unknown) {
     console.error('Jot sync failed:', error);
-    setSyncError('Your changes could not be synced. Check your connection and try again.');
+    setSyncError('Changes are kept in this session. Reconnect and tap Retry to sync them before signing out.');
   }
-
-  function persistJotChanges(jot: Jot) {
-    const encryptionKey = encryptionKeyRef.current;
-    if (!encryptionKey) return Promise.reject(new Error('Jot encryption is not ready yet.'));
-
-    const previousSave = jotSaveChains.current.get(jot.id) ?? Promise.resolve();
-    const nextSave = previousSave
-      .catch(() => undefined)
-      .then(() => saveJotChanges(jot, encryptionKey));
-
-    jotSaveChains.current.set(jot.id, nextSave);
-    return nextSave.finally(() => {
-      if (jotSaveChains.current.get(jot.id) === nextSave) {
-        jotSaveChains.current.delete(jot.id);
-      }
+  function persist(jot: Jot) {
+    const key = encryptionKeyRef.current;
+    if (!key) return;
+    const generation = session.current;
+    const previous = saveChains.current.get(jot.id) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(async () => {
+      if (generation !== session.current || deletingIds.current.has(jot.id)) return;
+      await saveJot(jot, key);
+      if (generation !== session.current) return;
+      if (dirtyJots.current.get(jot.id) === jot) dirtyJots.current.delete(jot.id);
+      setIsSaving(dirtyJots.current.size > 0);
+      if (!dirtyJots.current.size) setSyncError(null);
+    });
+    saveChains.current.set(jot.id, next);
+    void next.catch((error) => {
+      if (generation === session.current) reportSyncError(error);
+    }).finally(() => {
+      if (saveChains.current.get(jot.id) === next) saveChains.current.delete(jot.id);
     });
   }
+  function scheduleSave(jot: Jot, delay = 0) {
+    dirtyJots.current.set(jot.id, jot);
+    setIsSaving(true);
+    const timer = saveTimers.current.get(jot.id);
+    if (timer) clearTimeout(timer);
+    saveTimers.current.delete(jot.id);
+    if (!delay) { persist(jot); return; }
+    saveTimers.current.set(jot.id, setTimeout(() => {
+      saveTimers.current.delete(jot.id);
+      const latest = dirtyJots.current.get(jot.id);
+      if (latest) persist(latest);
+    }, delay));
+  }
+  function retrySync() {
+    dirtyJots.current.forEach((jot) => scheduleSave(jot));
+  }
 
   useEffect(() => {
-    if (!user) return;
-
-    let isCancelled = false;
+    const generation = ++session.current;
+    dirtyJots.current.clear();
+    saveChains.current.clear();
+    deletingIds.current.clear();
+    const timers = saveTimers.current;
+    const pending = dirtyJots.current;
+    const chains = saveChains.current;
+    const sessionRef = session;
+    timers.forEach(clearTimeout);
+    timers.clear();
     let unsubscribe: (() => void) | undefined;
-
-    void getOrCreateJotEncryptionKey(user.uid)
-      .then((encryptionKey) => {
-        if (isCancelled) return;
-        encryptionKeyRef.current = encryptionKey;
-        unsubscribe = subscribeToJots(
-          user.uid,
-          encryptionKey,
-          (nextJots) => {
-            replaceJots(nextJots);
-            setIsLoading(false);
-            setSyncError(null);
-          },
-          (error) => {
-            reportSyncError(error);
-            setIsLoading(false);
-          },
-        );
-      })
-      .catch((error) => {
-        reportSyncError(error);
+    if (userId) void getOrCreateJotEncryptionKey(userId).then((key) => {
+      if (session.current !== generation) return;
+      encryptionKeyRef.current = key;
+      unsubscribe = subscribeToJots(userId, key, (remote) => {
+        if (session.current !== generation) return;
+        const merged = new Map(remote.filter((jot) => !deletingIds.current.has(jot.id)).map((jot) => [jot.id, jot]));
+        dirtyJots.current.forEach((jot, id) => merged.set(id, jot));
+        // Decryption can finish after a write acknowledgement. Keep newer local data.
+        jotsRef.current.forEach((jot) => {
+          const incoming = merged.get(jot.id);
+          if (incoming && jot.updatedAt > incoming.updatedAt) merged.set(jot.id, jot);
+        });
+        replaceJots([...merged.values()].sort((a, b) => b.updatedAt - a.updatedAt));
         setIsLoading(false);
-      });
-
+      }, (error) => { if (session.current === generation) { reportSyncError(error); setIsLoading(false); } });
+    }).catch((error) => { if (session.current === generation) { reportSyncError(error); setIsLoading(false); } });
     return () => {
-      isCancelled = true;
       unsubscribe?.();
+      // Flush debounced edits using the current account's key before invalidating the session.
+      pending.forEach((jot) => {
+        if (timers.has(jot.id) && encryptionKeyRef.current) {
+          const key = encryptionKeyRef.current;
+          void (chains.get(jot.id) ?? Promise.resolve()).catch(() => undefined)
+            .then(() => saveJot(jot, key)).catch(console.error);
+        }
+      });
+      timers.forEach(clearTimeout);
+      timers.clear();
+      ++sessionRef.current;
       encryptionKeyRef.current = null;
     };
-  }, [user]);
+  }, [userId]); // Account identity, not profile edits, owns the subscription.
 
   useEffect(() => {
-    const timers = documentSaveTimers.current;
-    return () => {
-      timers.forEach((timer) => clearTimeout(timer));
-      timers.clear();
-    };
-  }, []);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') dirtyJots.current.forEach((jot) => scheduleSave(jot));
+    });
+    return () => subscription.remove();
+  });
 
-  function updateLocalJot(jotId: string, update: (jot: Jot) => Jot) {
-    const currentJot = jotsRef.current.find((jot) => jot.id === jotId);
-    if (!currentJot) return null;
-
-    const updatedJot = update(currentJot);
-    replaceJots(
-      jotsRef.current
-        .map((jot) => (jot.id === jotId ? updatedJot : jot))
-        .sort((first, second) => second.updatedAt - first.updatedAt),
-    );
-    return updatedJot;
+  function edit(jotId: string, update: (jot: Jot) => Jot, delay = 0) {
+    const current = jotsRef.current.find((jot) => jot.id === jotId);
+    if (!current) return;
+    const changed = update(current);
+    if (JSON.stringify(changed) === JSON.stringify(current)) return;
+    const next = { ...changed, updatedAt: Math.max(Date.now(), current.updatedAt + 1) };
+    replaceJots(jotsRef.current.map((jot) => jot.id === jotId ? next : jot));
+    scheduleSave(next, delay);
+    return next;
   }
-
   function createJot(title: string, kind: JotKind) {
-    const encryptionKey = encryptionKeyRef.current;
-    if (!user || !encryptionKey) {
-      throw new Error('Jot encryption is not ready yet.');
-    }
-
+    if (!user || !encryptionKeyRef.current) throw new Error('Your jots are still loading. Try again in a moment.');
     const now = Date.now();
-    const jot: Jot = {
-      ...emptyContent(kind),
-      versions: [],
-      accent: ACCENT_COLORS[jotsRef.current.length % ACCENT_COLORS.length],
-      createdAt: now,
-      documentContent: '',
-      emoji: kind === 'list' ? '☷' : 'Aa',
-      entries: [],
-      id: createId(),
-      kind,
-      memberIds: [user.uid],
-      ownerId: user.uid,
-      title: title.trim(),
-      trashedAt: null,
-      updatedAt: now,
-    };
-
+    const jot: Jot = { ...emptyContent(kind), id: createId(), title: title.trim().slice(0, 100) || 'Untitled',
+      accent: ACCENTS[jotsRef.current.length % ACCENTS.length].color,
+      createdAt: now, updatedAt: now, memberIds: [user.uid], ownerId: user.uid, trashedAt: null, versions: [] };
     replaceJots([jot, ...jotsRef.current]);
-    void saveJot(jot, encryptionKey).catch(reportSyncError);
+    scheduleSave(jot);
     return jot;
   }
-
-  function addEntry(jotId: string, text: string) {
-    const trimmedText = text.trim();
-    if (!trimmedText) return;
-
-    const now = Date.now();
-    const updatedJot = updateLocalJot(jotId, (jot) => ({
-      ...jot,
-      entries: [
-        ...jot.entries,
-        { completed: false, createdAt: now, id: createId(), text: trimmedText },
-      ],
-      updatedAt: now,
-    }));
-
-    if (updatedJot) {
-      void persistJotChanges(updatedJot).catch(reportSyncError);
-    }
+  function addEntry(id: string, text: string) {
+    if (!text.trim()) return;
+    edit(id, (jot) => ({ ...jot, entries: [...jot.entries,
+      { completed: false, createdAt: Date.now(), id: createId(), text: text.trim().slice(0, 500) }] }));
   }
-
-  function toggleEntry(jotId: string, entryId: string) {
-    const updatedJot = updateLocalJot(jotId, (jot) => ({
-      ...jot,
-      entries: jot.entries.map((entry) =>
-        entry.id === entryId ? { ...entry, completed: !entry.completed } : entry,
-      ),
-      updatedAt: Date.now(),
-    }));
-
-    if (updatedJot) {
-      void persistJotChanges(updatedJot).catch(reportSyncError);
-    }
+  function toggleEntry(id: string, entryId: string) {
+    edit(id, (jot) => ({ ...jot, entries: jot.entries.map((entry) => entry.id === entryId ? { ...entry, completed: !entry.completed } : entry) }));
   }
-
-  function removeEntry(jotId: string, entryId: string) {
-    const updatedJot = updateLocalJot(jotId, (jot) => ({
-      ...jot,
-      entries: jot.entries.filter((entry) => entry.id !== entryId),
-      updatedAt: Date.now(),
-    }));
-
-    if (updatedJot) {
-      void persistJotChanges(updatedJot).catch(reportSyncError);
-    }
+  function removeEntry(id: string, entryId: string) {
+    edit(id, (jot) => ({ ...jot, entries: jot.entries.filter((entry) => entry.id !== entryId) }));
   }
-
-  function renameEntry(jotId: string, entryId: string, text: string) {
-    const trimmedText = text.trim().slice(0, 500);
-    if (!trimmedText) return;
-
-    const updatedJot = updateLocalJot(jotId, (jot) => ({
-      ...jot,
-      entries: jot.entries.map((entry) =>
-        entry.id === entryId ? { ...entry, text: trimmedText } : entry,
-      ),
-      updatedAt: Date.now(),
-    }));
-
-    if (updatedJot) {
-      void persistJotChanges(updatedJot).catch(reportSyncError);
-    }
+  function renameEntry(id: string, entryId: string, text: string) {
+    if (!text.trim()) return;
+    edit(id, (jot) => ({ ...jot, entries: jot.entries.map((entry) => entry.id === entryId ? { ...entry, text: text.trim().slice(0, 500) } : entry) }));
   }
-
-  function reorderEntries(jotId: string, entryIds: string[]) {
-    const currentJot = jotsRef.current.find((jot) => jot.id === jotId);
-    if (!currentJot || currentJot.entries.length !== entryIds.length) return;
-
-    const entriesById = new Map(currentJot.entries.map((entry) => [entry.id, entry]));
-    const reorderedEntries = entryIds.map((entryId) => entriesById.get(entryId));
-    if (reorderedEntries.some((entry) => !entry)) return;
-    if (entryIds.every((entryId, index) => currentJot.entries[index]?.id === entryId)) return;
-
-    const updatedJot = updateLocalJot(jotId, (jot) => ({
-      ...jot,
-      entries: reorderedEntries as Jot['entries'],
-      updatedAt: Date.now(),
-    }));
-
-    if (updatedJot) {
-      void persistJotChanges(updatedJot).catch(reportSyncError);
-    }
+  function reorderEntries(id: string, ids: string[]) {
+    edit(id, (jot) => {
+      const byId = new Map(jot.entries.map((entry) => [entry.id, entry]));
+      if (ids.length !== jot.entries.length || new Set(ids).size !== ids.length || ids.some((key) => !byId.has(key))) return jot;
+      return { ...jot, entries: ids.map((key) => byId.get(key)!) };
+    });
   }
-
-  function updateDocument(jotId: string, content: string) {
-    const updatedJot = updateLocalJot(jotId, (jot) => ({
-      ...jot,
-      documentContent: content,
-      updatedAt: Date.now(),
-    }));
-
-    if (!updatedJot) return;
-
-    const existingTimer = documentSaveTimers.current.get(jotId);
-    if (existingTimer) clearTimeout(existingTimer);
-
-    const timer = setTimeout(() => {
-      documentSaveTimers.current.delete(jotId);
-      const latestJot = jotsRef.current.find((jot) => jot.id === jotId);
-      if (!latestJot) return;
-      void persistJotChanges(latestJot).catch(reportSyncError);
-    }, 400);
-
-    documentSaveTimers.current.set(jotId, timer);
+  function updateDocument(id: string, content: string) {
+    edit(id, (jot) => ({ ...jot, documentContent: content.slice(0, 50000) }), 400);
   }
-
-  async function renameJot(jotId: string, title: string) {
-    const trimmedTitle = title.trim().slice(0, 100);
-    if (!trimmedTitle) throw new Error('A jot needs a name.');
-
-    const previousJots = jotsRef.current;
-    const currentJot = previousJots.find((jot) => jot.id === jotId);
-    if (!currentJot || currentJot.title === trimmedTitle) return;
-
-    const updatedJot = updateLocalJot(jotId, (jot) => ({
-      ...jot,
-      title: trimmedTitle,
-      updatedAt: Date.now(),
+  async function renameJot(id: string, title: string) {
+    if (!title.trim()) throw new Error('A jot needs a name.');
+    edit(id, (jot) => ({ ...jot, title: title.trim().slice(0, 100) }));
+  }
+  async function changeJotKind(id: string, kind: JotKind) {
+    edit(id, (jot) => jot.kind === kind ? jot : ({ ...jot, kind,
+      documentContent: kind === 'document' ? jot.entries.map((entry) => `${entry.completed ? '[x]' : '-'} ${entry.text}`).join('\n') : jot.documentContent,
+      entries: kind === 'list' ? jot.documentContent.split(/\r?\n/).filter((line) => line.trim()).map((line) => ({
+        id: createId(), createdAt: Date.now(), completed: /^(?:[-*•]\s*)?\[[xX]\]/.test(line.trim()),
+        text: line.trim().replace(/^(?:[-*•]\s*)?\[[ xX]\]\s*|^(?:[-*•]|\d+[.)]|#{1,3})\s+/, ''),
+      })) : jot.entries,
     }));
-    if (!updatedJot) {
-      replaceJots(previousJots);
-      throw new Error('Jot encryption is not ready yet.');
-    }
-
+  }
+  async function trashJots(ids: string[]) {
+    ids.forEach((id) => edit(id, (jot) => ({ ...jot, trashedAt: Date.now() })));
+  }
+  async function restoreJot(id: string) {
+    edit(id, (jot) => ({ ...jot, trashedAt: null, archivedAt: null, isTemplate: false }));
+  }
+  async function deleteJotPermanently(id: string) {
+    const previous = jotsRef.current.find((jot) => jot.id === id);
+    if (!previous) return;
+    deletingIds.current.add(id);
+    const timer = saveTimers.current.get(id);
+    if (timer) clearTimeout(timer);
+    saveTimers.current.delete(id);
+    dirtyJots.current.delete(id);
+    replaceJots(jotsRef.current.filter((jot) => jot.id !== id));
     try {
-      await persistJotChanges(updatedJot);
+      await saveChains.current.get(id)?.catch(() => undefined);
+      await permanentlyDeleteJot(id);
     } catch (error) {
-      replaceJots(previousJots);
+      deletingIds.current.delete(id);
+      replaceJots([...jotsRef.current, previous]);
       reportSyncError(error);
       throw error;
     }
   }
-
-  async function changeJotKind(jotId: string, kind: JotKind) {
-    const previousJots = jotsRef.current;
-    const currentJot = previousJots.find((jot) => jot.id === jotId);
-    if (!currentJot || currentJot.kind === kind) return;
-
-    const updatedJot = updateLocalJot(jotId, (jot) => ({
-      ...jot,
-      documentContent: kind === 'document' ? listEntriesToDocument(jot) : jot.documentContent,
-      emoji: kind === 'list' ? '☷' : 'Aa',
-      entries: kind === 'list' ? documentToListEntries(jot.documentContent) : jot.entries,
-      kind,
-      updatedAt: Date.now(),
-    }));
-    if (!updatedJot) {
-      replaceJots(previousJots);
-      throw new Error('Jot encryption is not ready yet.');
-    }
-
-    try {
-      await persistJotChanges(updatedJot);
-    } catch (error) {
-      replaceJots(previousJots);
-      reportSyncError(error);
-      throw error;
-    }
-  }
-
-  async function trashJots(jotIds: string[]) {
-    if (!jotIds.length) return;
-
-    const previousJots = jotsRef.current;
-    const trashedAt = Date.now();
-    const trashedIds = new Set(jotIds);
-    replaceJots(
-      jotsRef.current.map((jot) =>
-        trashedIds.has(jot.id) ? { ...jot, trashedAt, updatedAt: trashedAt } : jot,
-      ),
-    );
-
-    try {
-      await moveJotsToTrash(jotIds, trashedAt);
-    } catch (error) {
-      replaceJots(previousJots);
-      reportSyncError(error);
-      throw error;
-    }
-  }
-
-  async function restoreJot(jotId: string) {
-    const previousJots = jotsRef.current;
-    const restoredAt = Date.now();
-    updateLocalJot(jotId, (jot) => ({ ...jot, trashedAt: null, updatedAt: restoredAt }));
-
-    try {
-      await restoreJotFromTrash(jotId);
-    } catch (error) {
-      replaceJots(previousJots);
-      reportSyncError(error);
-      throw error;
-    }
-  }
-
-  async function deleteJotPermanently(jotId: string) {
-    const previousJots = jotsRef.current;
-    replaceJots(jotsRef.current.filter((jot) => jot.id !== jotId));
-
-    try {
-      await permanentlyDeleteJot(jotId);
-    } catch (error) {
-      replaceJots(previousJots);
-      reportSyncError(error);
-      throw error;
-    }
-  }
-
-  const activeJots = jots.filter((jot) => jot.trashedAt === null);
-  const trashedJots = jots.filter((jot) => jot.trashedAt !== null);
-
-  return (
-    <JotsContext.Provider
-      value={{
-        addEntry,
-        changeJotKind,
-        createJot,
-        deleteJotPermanently,
-        isLoading,
-        jots: activeJots,
-        removeEntry,
-        renameEntry,
-        renameJot,
-        reorderEntries,
-        restoreJot,
-        syncError,
-        toggleEntry,
-        trashJots,
-        trashedJots,
-        updateDocument,
-      }}>
-      {children}
-    </JotsContext.Provider>
-  );
+  return <JotsContext.Provider value={{ addEntry, changeJotKind, createJot, deleteJotPermanently,
+    isLoading, isSaving, jots: jots.filter((jot) => jot.trashedAt === null), removeEntry, renameEntry,
+    renameJot, reorderEntries, restoreJot, retrySync, syncError, toggleEntry, trashJots,
+    trashedJots: jots.filter((jot) => jot.trashedAt !== null), updateDocument }}>{children}</JotsContext.Provider>;
 }
-
 export function useJots() {
   const context = useContext(JotsContext);
-
-  if (!context) {
-    throw new Error('useJots must be used inside JotsProvider.');
-  }
-
+  if (!context) throw new Error('useJots must be used inside JotsProvider.');
   return context;
 }
