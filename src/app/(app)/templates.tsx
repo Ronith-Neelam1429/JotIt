@@ -9,7 +9,7 @@ import { useJots } from '@/providers/jots-provider';
 export default function TemplatesScreen() {
   const { jots, createJot, duplicateJot, isLoading } = useJots();
   const templates = jots.filter((jot) => jot.isTemplate);
-  function useStarter(template: StarterTemplate) {
+  function createFromStarter(template: StarterTemplate) {
     const jot = createJot(template.title, template.content.kind, { ...template.content,
       entries: (template.content.entries ?? []).map((entry) => ({ ...entry, id: createId(), createdAt: Date.now() })) });
     router.push({ pathname: '/jot/[jotId]', params: { jotId: jot.id } });
@@ -22,7 +22,7 @@ export default function TemplatesScreen() {
         <Text style={ui.description}>Start with a fresh copy. Your templates stay ready for next time.</Text>
         <Text style={ui.label}>READY TO USE</Text>
         {STARTER_TEMPLATES.map((template) => <ActionRow key={template.id} icon={template.content.emoji}
-          title={template.title} description={template.description} disabled={isLoading} onPress={() => useStarter(template)} />)}
+          title={template.title} description={template.description} disabled={isLoading} onPress={() => createFromStarter(template)} />)}
         <Text style={ui.label}>YOUR TEMPLATES · {templates.length}</Text>
       </View>}
       ListEmptyComponent={<Text style={ui.description}>Make a jot you love, then choose “Save as template” in its options.</Text>}

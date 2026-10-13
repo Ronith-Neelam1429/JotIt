@@ -141,3 +141,20 @@ export function searchPreview(jot: Jot, query: string) {
   const start = Math.max(0, index - 24);
   return `${start ? '…' : ''}${text.slice(start, start + 140)}${start + 140 < text.length ? '…' : ''}`;
 }
+
+export type UndoState = { past: JotContent[]; future: JotContent[]; lastEdit: number; groupStarted: number };
+export function recordUndo(state: UndoState | undefined, previous: JotContent, typing: boolean, now: number): UndoState {
+  const current = state ?? { past: [], future: [], lastEdit: 0, groupStarted: 0 };
+  const grouped = typing && current.lastEdit > 0 && now - current.lastEdit < 1200 && now - current.groupStarted < 5000;
+  let past = grouped ? current.past : [...current.past, contentOf(previous)].slice(-40);
+  while (past.length > 1 && new TextEncoder().encode(JSON.stringify(past)).length > 750000) past = past.slice(1);
+  return { past, future: [], lastEdit: typing ? now : 0, groupStarted: grouped ? current.groupStarted : now };
+}
+export function stepUndo(state: UndoState, current: JotContent, direction: 'undo' | 'redo') {
+  const source = direction === 'undo' ? state.past : state.future;
+  const content = source.at(-1);
+  if (!content) return null;
+  return { content, state: direction === 'undo'
+    ? { past: state.past.slice(0, -1), future: [...state.future, contentOf(current)], lastEdit: 0, groupStarted: 0 }
+    : { past: [...state.past, contentOf(current)], future: state.future.slice(0, -1), lastEdit: 0, groupStarted: 0 } };
+}

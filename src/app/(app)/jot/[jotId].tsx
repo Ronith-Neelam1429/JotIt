@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Button } from '@/components/jot-controls';
 import { JotTools } from '@/components/jot-tools';
 import { JotEntryRow } from '@/components/jot-entry-row';
 import { type JotKind, useJots } from '@/providers/jots-provider';
@@ -148,6 +149,7 @@ function RenameJotModal({
 export default function JotScreen() {
   const { jotId } = useLocalSearchParams<{ jotId: string }>();
   const {
+    undo, redo, canUndo, canRedo, isSaving, syncError, retrySync,
     addEntry,
     changeJotKind,
     isLoading,
@@ -288,6 +290,11 @@ export default function JotScreen() {
     );
   }
 
+  const editBar = <View style={styles.editBar}>
+    <Button label="↶ Undo" disabled={!canUndo(jot.id)} onPress={() => undo(jot.id)} />
+    <Button label="↷ Redo" disabled={!canRedo(jot.id)} onPress={() => redo(jot.id)} />
+    {syncError ? <Button label="Retry sync" danger onPress={retrySync} /> : <Text accessibilityLiveRegion="polite" style={styles.saveStatus}>{isSaving ? 'Syncing…' : 'Saved'}</Text>}
+  </View>;
   const renameModal = (
     <RenameJotModal
       error={renameError}
@@ -328,6 +335,7 @@ export default function JotScreen() {
             onRename={openRename}
             title={jot.title}
           />
+          {editBar}
           <View style={styles.documentContent}>
             <Pressable
               accessibilityHint="Opens the rename form"
@@ -373,6 +381,7 @@ export default function JotScreen() {
           title={jot.title}
         />
 
+        {editBar}
         <DraggableFlatList
           containerStyle={styles.list}
           contentContainerStyle={styles.content}
@@ -459,6 +468,8 @@ export default function JotScreen() {
 }
 
 const styles = StyleSheet.create({
+  editBar: { flexDirection: 'row', gap: 8, alignItems: 'center', paddingHorizontal: 18, paddingTop: 8 },
+  saveStatus: { color: '#758179', fontSize: 12, marginLeft: 'auto' },
   screen: { backgroundColor: '#F6F5EF', flex: 1 },
   keyboardView: { flex: 1 },
   list: { flex: 1 },

@@ -1,14 +1,18 @@
 import { createContext, type PropsWithChildren, useContext, useEffect, useRef, useState } from 'react';
-import { AppState } from 'react-native';
+import { Alert, AppState } from 'react-native';
 
 import { permanentlyDeleteJot, saveJot, subscribeToJots } from '@/lib/firebase-jots';
-import { ACCENTS, createId, deleteEntries, restoreEntry as restoreDeletedEntry, emptyContent, contentOf, normalizeTags, type JotContent, type Jot, type JotKind } from '@/lib/jot-model';
+import { ACCENTS, createId, deleteEntries, restoreEntry as restoreDeletedEntry, emptyContent, contentOf, normalizeTags, recordUndo, stepUndo, type UndoState, type JotContent, type Jot, type JotKind } from '@/lib/jot-model';
 import { getOrCreateJotEncryptionKey, type JotEncryptionKey } from '@/lib/jot-encryption';
 import { useAuth } from '@/providers/auth-provider';
 
 export type { Jot, JotEntry, JotKind } from '@/lib/jot-model';
 
 type JotsContextValue = {
+  undo: (id: string) => void;
+  redo: (id: string) => void;
+  canUndo: (id: string) => boolean;
+  canRedo: (id: string) => boolean;
   organizeJot: (id: string, folder: string, tags: string[]) => void;
   pinJot: (id: string, pinned: boolean) => void;
   archiveJot: (id: string, archived: boolean) => void;
@@ -52,6 +56,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
   const saveChains = useRef(new Map<string, Promise<void>>());
   const deletingIds = useRef(new Set<string>());
   const session = useRef(0);
+  const undoStates = useRef(new Map<string, UndoState>());
 
   function replaceJots(next: Jot[]) {
     jotsRef.current = next;
@@ -150,15 +155,29 @@ export function JotsProvider({ children }: PropsWithChildren) {
     return () => subscription.remove();
   });
 
-  function edit(jotId: string, update: (jot: Jot) => Jot, delay = 0) {
+  function edit(jotId: string, update: (jot: Jot) => Jot, delay = 0, record = true) {
     const current = jotsRef.current.find((jot) => jot.id === jotId);
     if (!current) return;
     const changed = update(current);
     if (JSON.stringify(changed) === JSON.stringify(current)) return;
+    if (new TextEncoder().encode(JSON.stringify(contentOf(changed))).length > 220000) {
+      Alert.alert('This jot is getting full', 'Split it into smaller jots before adding more content. Your existing content is unchanged.');
+      return;
+    }
+    if (record) undoStates.current.set(jotId, recordUndo(undoStates.current.get(jotId), current, delay > 0, Date.now()));
     const next = { ...changed, updatedAt: Math.max(Date.now(), current.updatedAt + 1) };
     replaceJots(jotsRef.current.map((jot) => jot.id === jotId ? next : jot));
     scheduleSave(next, delay);
     return next;
+  }
+  function travel(id: string, direction: 'undo' | 'redo') {
+    const current = jotsRef.current.find((jot) => jot.id === id);
+    const state = undoStates.current.get(id);
+    if (!current || !state) return;
+    const result = stepUndo(state, current, direction);
+    if (!result) return;
+    undoStates.current.set(id, result.state);
+    edit(id, (jot) => ({ ...jot, ...result.content }), 0, false);
   }
   function createJot(title: string, kind: JotKind, seed: Partial<JotContent> = {}) {
     if (!user || !encryptionKeyRef.current) throw new Error('Your jots are still loading. Try again in a moment.');
@@ -265,7 +284,8 @@ export function JotsProvider({ children }: PropsWithChildren) {
       throw error;
     }
   }
-  return <JotsContext.Provider value={{ organizeJot, pinJot, archiveJot, duplicateJot, completeAll, clearCompleted, restoreEntry, updateAppearance, addEntry, changeJotKind, createJot, deleteJotPermanently,
+  return <JotsContext.Provider value={{ undo: (id) => travel(id, 'undo'), redo: (id) => travel(id, 'redo'),
+    canUndo: (id) => Boolean(undoStates.current.get(id)?.past.length), canRedo: (id) => Boolean(undoStates.current.get(id)?.future.length), organizeJot, pinJot, archiveJot, duplicateJot, completeAll, clearCompleted, restoreEntry, updateAppearance, addEntry, changeJotKind, createJot, deleteJotPermanently,
     isLoading, isSaving, jots: jots.filter((jot) => jot.trashedAt === null), removeEntry, renameEntry,
     renameJot, reorderEntries, restoreJot, retrySync, syncError, toggleEntry, trashJots,
     trashedJots: jots.filter((jot) => jot.trashedAt !== null), updateDocument }}>{children}</JotsContext.Provider>;

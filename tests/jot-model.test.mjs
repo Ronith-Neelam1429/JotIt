@@ -46,3 +46,16 @@ test('search finds accent-insensitive words across content, notes, quantities an
   assert.equal(matchesSearch(jot, '2 weekend trips'), true);
   assert.equal(matchesSearch(jot, 'secret'), false);
 });
+
+test('undo groups typing, supports redo and clears redo when a new branch is edited', async () => {
+  const { emptyContent, recordUndo, stepUndo } = await import('../src/lib/jot-model.ts');
+  const a = { ...emptyContent(), documentContent: '' };
+  const b = { ...a, documentContent: 'hello' };
+  let state = recordUndo(undefined, a, true, 10000);
+  state = recordUndo(state, b, true, 10100);
+  assert.equal(state.past.length, 1);
+  const undone = stepUndo(state, b, 'undo');
+  assert.equal(undone.content.documentContent, '');
+  assert.equal(stepUndo(undone.state, a, 'redo').content.documentContent, 'hello');
+  assert.equal(recordUndo(undone.state, a, false, 12000).future.length, 0);
+});
