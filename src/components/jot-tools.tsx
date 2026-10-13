@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { ActionRow, Sheet, ui } from '@/components/jot-controls';
@@ -7,13 +8,16 @@ import { useJots } from '@/providers/jots-provider';
 export function JotTools({ jot, visible, onClose, onRename, onChangeKind, onTrash }: {
   jot: Jot; visible: boolean; onClose: () => void; onRename: () => void; onChangeKind: () => void; onTrash: () => void;
 }) {
-  const { updateAppearance, completeAll, clearCompleted, restoreEntry } = useJots();
+  const { updateAppearance, duplicateJot, completeAll, clearCompleted, restoreEntry } = useJots();
   const [panel, setPanel] = useState<string | null>(null);
   function open(panelName: string) { onClose(); setTimeout(() => setPanel(panelName), 250); }
   return <>
     <Sheet title="Make it yours" visible={visible} onClose={onClose}>
       <ActionRow icon="✎" title="Rename" onPress={onRename} />
       <ActionRow icon="◉" title="Color & icon" description="A little personality for your jot" onPress={() => open('appearance')} />
+      <ActionRow icon="⧉" title="Duplicate jot" description="Make an independent copy" onPress={() => {
+        const copy = duplicateJot(jot.id); onClose(); router.push({ pathname: '/jot/[jotId]', params: { jotId: copy.id } });
+      }} />
       <ActionRow icon={jot.kind === 'list' ? 'Aa' : '☷'} title={`Switch to ${jot.kind === 'list' ? 'free write' : 'list'}`} onPress={onChangeKind} />
       {jot.kind === 'list' ? <>
         <View style={ui.divider} />

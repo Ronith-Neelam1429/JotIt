@@ -2,20 +2,21 @@ import { createContext, type PropsWithChildren, useContext, useEffect, useRef, u
 import { AppState } from 'react-native';
 
 import { permanentlyDeleteJot, saveJot, subscribeToJots } from '@/lib/firebase-jots';
-import { ACCENTS, createId, deleteEntries, restoreEntry as restoreDeletedEntry, emptyContent, type Jot, type JotKind } from '@/lib/jot-model';
+import { ACCENTS, createId, deleteEntries, restoreEntry as restoreDeletedEntry, emptyContent, contentOf, type JotContent, type Jot, type JotKind } from '@/lib/jot-model';
 import { getOrCreateJotEncryptionKey, type JotEncryptionKey } from '@/lib/jot-encryption';
 import { useAuth } from '@/providers/auth-provider';
 
 export type { Jot, JotEntry, JotKind } from '@/lib/jot-model';
 
 type JotsContextValue = {
+  duplicateJot: (id: string, asTemplate?: boolean) => Jot;
   completeAll: (id: string) => void;
   clearCompleted: (id: string) => void;
   restoreEntry: (id: string, entryId: string) => void;
   updateAppearance: (id: string, accent: string, emoji: string) => void;
   addEntry: (jotId: string, text: string) => void;
   changeJotKind: (jotId: string, kind: JotKind) => Promise<void>;
-  createJot: (title: string, kind: JotKind) => Jot;
+  createJot: (title: string, kind: JotKind, seed?: Partial<JotContent>) => Jot;
   deleteJotPermanently: (jotId: string) => Promise<void>;
   isLoading: boolean;
   isSaving: boolean;
@@ -156,15 +157,26 @@ export function JotsProvider({ children }: PropsWithChildren) {
     scheduleSave(next, delay);
     return next;
   }
-  function createJot(title: string, kind: JotKind) {
+  function createJot(title: string, kind: JotKind, seed: Partial<JotContent> = {}) {
     if (!user || !encryptionKeyRef.current) throw new Error('Your jots are still loading. Try again in a moment.');
     const now = Date.now();
     const jot: Jot = { ...emptyContent(kind), id: createId(), title: title.trim().slice(0, 100) || 'Untitled',
-      accent: ACCENTS[jotsRef.current.length % ACCENTS.length].color,
+      accent: ACCENTS[jotsRef.current.length % ACCENTS.length].color, ...seed,
       createdAt: now, updatedAt: now, memberIds: [user.uid], ownerId: user.uid, trashedAt: null, versions: [] };
     replaceJots([jot, ...jotsRef.current]);
     scheduleSave(jot);
     return jot;
+  }
+  function duplicateJot(id: string, asTemplate = false) {
+    const original = jotsRef.current.find((jot) => jot.id === id);
+    if (!original) throw new Error('This jot is no longer available.');
+    const title = asTemplate ? `${original.title} template` : original.isTemplate ? original.title : `${original.title} copy`;
+    return createJot(title, original.kind, {
+      ...contentOf(original), title: title.slice(0, 100), archivedAt: null, pinned: false,
+      isTemplate: asTemplate, deletedEntries: [],
+      entries: original.entries.map((entry) => ({ ...entry, id: createId(), createdAt: Date.now(),
+        completed: original.isTemplate || asTemplate ? false : entry.completed })),
+    });
   }
   function updateAppearance(id: string, accent: string, emoji: string) {
     edit(id, (jot) => ({ ...jot, accent, emoji }));
@@ -241,7 +253,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
       throw error;
     }
   }
-  return <JotsContext.Provider value={{ completeAll, clearCompleted, restoreEntry, updateAppearance, addEntry, changeJotKind, createJot, deleteJotPermanently,
+  return <JotsContext.Provider value={{ duplicateJot, completeAll, clearCompleted, restoreEntry, updateAppearance, addEntry, changeJotKind, createJot, deleteJotPermanently,
     isLoading, isSaving, jots: jots.filter((jot) => jot.trashedAt === null), removeEntry, renameEntry,
     renameJot, reorderEntries, restoreJot, retrySync, syncError, toggleEntry, trashJots,
     trashedJots: jots.filter((jot) => jot.trashedAt !== null), updateDocument }}>{children}</JotsContext.Provider>;
