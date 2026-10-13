@@ -173,8 +173,7 @@ export default function JotScreen() {
 
   function handleAddEntry() {
     if (!jot || !draft.trim()) return;
-    addEntry(jot.id, draft);
-    setDraft('');
+    if (addEntry(jot.id, draft)) setDraft('');
   }
 
   function confirmRemoveEntry(entryId: string, entryText: string) {

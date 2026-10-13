@@ -1,9 +1,10 @@
 import { createContext, type PropsWithChildren, useContext, useEffect, useRef, useState } from 'react';
 import { Alert, AppState } from 'react-native';
 
-import { permanentlyDeleteJot, saveJot, subscribeToJots } from '@/lib/firebase-jots';
+import { permanentlyDeleteJot, prepareJotSave, saveJot, subscribeToJots } from '@/lib/firebase-jots';
 import { ACCENTS, createId, deleteEntries, restoreEntry as restoreDeletedEntry, emptyContent, contentOf, normalizeTags, checkpoint, recordUndo, stepUndo, type UndoState, type JotContent, type Jot, type JotKind } from '@/lib/jot-model';
 import { getOrCreateJotEncryptionKey, type JotEncryptionKey } from '@/lib/jot-encryption';
+import { dispatchJotSave } from '@/lib/jot-save-queue';
 import { useAuth } from '@/providers/auth-provider';
 
 export type { Jot, JotEntry, JotKind } from '@/lib/jot-model';
@@ -22,7 +23,7 @@ type JotsContextValue = {
   clearCompleted: (id: string) => void;
   restoreEntry: (id: string, entryId: string) => void;
   updateAppearance: (id: string, accent: string, emoji: string) => void;
-  addEntry: (jotId: string, text: string) => void;
+  addEntry: (jotId: string, text: string) => boolean;
   changeJotKind: (jotId: string, kind: JotKind) => Promise<void>;
   createJot: (title: string, kind: JotKind, seed?: Partial<JotContent>) => Jot;
   deleteJotPermanently: (jotId: string) => Promise<void>;
@@ -72,14 +73,16 @@ export function JotsProvider({ children }: PropsWithChildren) {
     if (!key) return;
     const generation = session.current;
     const previous = saveChains.current.get(jot.id) ?? Promise.resolve();
-    const next = previous.catch(() => undefined).then(async () => {
-      if (generation !== session.current || deletingIds.current.has(jot.id)) return;
-      await saveJot(jot, key);
+    const next = dispatchJotSave(previous, async () => {
+      if (generation !== session.current || deletingIds.current.has(jot.id)) return null;
+      const commit = await prepareJotSave(jot, key);
+      return generation === session.current && !deletingIds.current.has(jot.id) ? commit : null;
+    }, () => {
       if (generation !== session.current) return;
       if (dirtyJots.current.get(jot.id) === jot) dirtyJots.current.delete(jot.id);
       setIsSaving(dirtyJots.current.size > 0);
       if (!dirtyJots.current.size) setSyncError(null);
-    });
+    }, (error) => { if (generation === session.current) reportSyncError(error); });
     saveChains.current.set(jot.id, next);
     void next.catch((error) => {
       if (generation === session.current) reportSyncError(error);
@@ -136,7 +139,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
       unsubscribe?.();
       // Flush debounced edits using the current account's key before invalidating the session.
       pending.forEach((jot) => {
-        if (timers.has(jot.id) && encryptionKeyRef.current) {
+        if (encryptionKeyRef.current) {
           const key = encryptionKeyRef.current;
           void (chains.get(jot.id) ?? Promise.resolve()).catch(() => undefined)
             .then(() => saveJot(jot, key)).catch(console.error);
@@ -220,9 +223,10 @@ export function JotsProvider({ children }: PropsWithChildren) {
     edit(id, (jot) => ({ ...jot, accent, emoji }));
   }
   function addEntry(id: string, text: string) {
-    if (!text.trim()) return;
-    edit(id, (jot) => ({ ...jot, entries: [...jot.entries,
-      { completed: false, createdAt: Date.now(), id: createId(), text: text.trim().slice(0, 500) }] }));
+    if (!text.trim()) return false;
+    return Boolean(edit(id, (jot) => ({ ...jot, entries: [...jot.entries,
+      { completed: false, createdAt: Date.now(), id: createId(), text: text.trim().slice(0, 500) }] })));
+
   }
   function toggleEntry(id: string, entryId: string) {
     edit(id, (jot) => ({ ...jot, entries: jot.entries.map((entry) => entry.id === entryId ? { ...entry, completed: !entry.completed } : entry) }));
@@ -280,6 +284,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
     if (timer) clearTimeout(timer);
     saveTimers.current.delete(id);
     dirtyJots.current.delete(id);
+    setIsSaving(dirtyJots.current.size > 0);
     replaceJots(jotsRef.current.filter((jot) => jot.id !== id));
     try {
       await saveChains.current.get(id)?.catch(() => undefined);

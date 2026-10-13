@@ -6,7 +6,6 @@ import {
   query,
   setDoc,
   Timestamp,
-  updateDoc,
   where,
 } from '@react-native-firebase/firestore';
 
@@ -174,36 +173,9 @@ export async function saveJot(
   );
 }
 
-export async function saveJotChanges(jot: Jot, encryptionKey: JotEncryptionKey) {
-  const content: EncryptedJotContent = {
-    ...contentOf(jot), versions: jot.versions,
-  };
-
-  await updateDoc(jotDocument(jot.id), {
-    encryptedPayload: await encryptJson(content, encryptionKey),
-    encryptionVersion: 1,
-    updatedAt: jot.updatedAt,
-  });
-}
-
-export async function moveJotsToTrash(jotIds: string[], trashedAt: number) {
-  await Promise.all(
-    jotIds.map((jotId) =>
-      updateDoc(jotDocument(jotId), {
-        expiresAt: Timestamp.fromMillis(trashedAt + TRASH_RETENTION_MS),
-        trashedAt: Timestamp.fromMillis(trashedAt),
-        updatedAt: trashedAt,
-      }),
-    ),
-  );
-}
-
-export function restoreJotFromTrash(jotId: string) {
-  return updateDoc(jotDocument(jotId), {
-    expiresAt: null,
-    trashedAt: null,
-    updatedAt: Date.now(),
-  });
+export async function prepareJotSave(jot: Jot, encryptionKey: JotEncryptionKey) {
+  const data = await encryptedJotData(jot, encryptionKey);
+  return () => setDoc(jotDocument(jot.id), data);
 }
 
 export function permanentlyDeleteJot(jotId: string) {
