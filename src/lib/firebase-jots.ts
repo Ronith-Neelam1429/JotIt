@@ -17,29 +17,8 @@ import {
   type JotEncryptionKey,
 } from '@/lib/jot-encryption';
 
-export type JotEntry = {
-  completed: boolean;
-  createdAt: number;
-  id: string;
-  text: string;
-};
-
-export type JotKind = 'document' | 'list';
-
-export type Jot = {
-  accent: string;
-  createdAt: number;
-  documentContent: string;
-  emoji: string;
-  entries: JotEntry[];
-  id: string;
-  kind: JotKind;
-  memberIds: string[];
-  ownerId: string;
-  title: string;
-  trashedAt: number | null;
-  updatedAt: number;
-};
+import { contentOf, parseContent, parseVersions, type Jot } from '@/lib/jot-model';
+export type { Jot, JotEntry, JotKind } from '@/lib/jot-model';
 
 type EncryptedJotContent = Omit<
   Jot,
@@ -64,77 +43,14 @@ type LegacyFirestoreJot = Omit<Jot, 'id'> & {
 
 const TRASH_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
-function isJotKind(value: unknown): value is JotKind {
-  return value === 'document' || value === 'list';
-}
-
-function parseEntries(value: unknown): JotEntry[] {
-  if (!Array.isArray(value)) return [];
-
-  return value.filter((entry): entry is JotEntry => {
-    if (!entry || typeof entry !== 'object') return false;
-    const candidate = entry as Partial<JotEntry>;
-    return (
-      typeof candidate.completed === 'boolean' &&
-      typeof candidate.createdAt === 'number' &&
-      typeof candidate.id === 'string' &&
-      typeof candidate.text === 'string'
-    );
-  });
-}
-
-function parseContent(value: unknown): EncryptedJotContent | null {
-  if (!value || typeof value !== 'object') return null;
-  const data = value as Partial<EncryptedJotContent>;
-
-  if (
-    typeof data.accent !== 'string' ||
-    typeof data.documentContent !== 'string' ||
-    typeof data.emoji !== 'string' ||
-    !isJotKind(data.kind) ||
-    typeof data.title !== 'string'
-  ) {
-    return null;
-  }
-
-  return {
-    accent: data.accent,
-    documentContent: data.documentContent,
-    emoji: data.emoji,
-    entries: parseEntries(data.entries),
-    kind: data.kind,
-    title: data.title,
-  };
-}
-
 function parseLegacyJot(id: string, value: unknown): Jot | null {
   if (!value || typeof value !== 'object') return null;
   const data = value as Partial<LegacyFirestoreJot>;
-
-  if (
-    typeof data.accent !== 'string' ||
-    typeof data.createdAt !== 'number' ||
-    !isJotKind(data.kind) ||
-    typeof data.title !== 'string' ||
-    typeof data.updatedAt !== 'number'
-  ) {
-    return null;
-  }
-
-  return {
-    accent: data.accent,
-    createdAt: data.createdAt,
-    documentContent: typeof data.documentContent === 'string' ? data.documentContent : '',
-    emoji: typeof data.emoji === 'string' ? data.emoji : data.kind === 'list' ? '☷' : 'Aa',
-    entries: parseEntries(data.entries),
-    id,
-    kind: data.kind,
+  const content = parseContent(data);
+  if (!content || typeof data.createdAt !== 'number' || typeof data.updatedAt !== 'number') return null;
+  return { ...content, id, createdAt: data.createdAt, updatedAt: data.updatedAt,
     memberIds: Array.isArray(data.memberIds) ? data.memberIds : [],
-    ownerId: typeof data.ownerId === 'string' ? data.ownerId : '',
-    title: data.title,
-    trashedAt: null,
-    updatedAt: data.updatedAt,
-  };
+    ownerId: typeof data.ownerId === 'string' ? data.ownerId : '', trashedAt: null, versions: [] };
 }
 
 function jotDocument(jotId: string) {
@@ -146,12 +62,7 @@ async function encryptedJotData(
   encryptionKey: JotEncryptionKey,
 ): Promise<EncryptedFirestoreJot> {
   const content: EncryptedJotContent = {
-    accent: jot.accent,
-    documentContent: jot.documentContent,
-    emoji: jot.emoji,
-    entries: jot.entries,
-    kind: jot.kind,
-    title: jot.title,
+    ...contentOf(jot), versions: jot.versions,
   };
 
   return {
@@ -185,13 +96,13 @@ async function decryptStoredJot(
     return null;
   }
 
-  const content = parseContent(
-    await decryptJson<EncryptedJotContent>(data.encryptedPayload, encryptionKey),
-  );
+  const decrypted = await decryptJson<EncryptedJotContent>(data.encryptedPayload, encryptionKey);
+  const content = parseContent(decrypted);
   if (!content) return null;
 
   return {
     ...content,
+    versions: parseVersions(decrypted.versions),
     createdAt: data.createdAt,
     id,
     memberIds: Array.isArray(data.memberIds) ? data.memberIds : [],
@@ -212,9 +123,12 @@ export function subscribeToJots(
     where('memberIds', 'array-contains', userId),
   );
 
-  return onSnapshot(
+  let revision = 0;
+  let active = true;
+  const unsubscribe = onSnapshot(
     jotsQuery,
     (snapshot) => {
+      const currentRevision = ++revision;
       void (async () => {
         const jots = await Promise.all(
           snapshot.docs.map(async (jotSnapshot) => {
@@ -237,6 +151,7 @@ export function subscribeToJots(
           }),
         );
 
+        if (!active || revision !== currentRevision) return;
         onJots(
           jots
             .filter((jot): jot is Jot => Boolean(jot))
@@ -246,6 +161,7 @@ export function subscribeToJots(
     },
     (error) => onError(error),
   );
+  return () => { active = false; unsubscribe(); };
 }
 
 export async function saveJot(
@@ -260,12 +176,7 @@ export async function saveJot(
 
 export async function saveJotChanges(jot: Jot, encryptionKey: JotEncryptionKey) {
   const content: EncryptedJotContent = {
-    accent: jot.accent,
-    documentContent: jot.documentContent,
-    emoji: jot.emoji,
-    entries: jot.entries,
-    kind: jot.kind,
-    title: jot.title,
+    ...contentOf(jot), versions: jot.versions,
   };
 
   await updateDoc(jotDocument(jot.id), {

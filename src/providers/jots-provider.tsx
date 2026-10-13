@@ -21,6 +21,7 @@ import {
   getOrCreateJotEncryptionKey,
   type JotEncryptionKey,
 } from '@/lib/jot-encryption';
+import { emptyContent } from '@/lib/jot-model';
 import { useAuth } from '@/providers/auth-provider';
 
 export type { Jot, JotEntry, JotKind } from '@/lib/firebase-jots';
@@ -184,6 +185,8 @@ export function JotsProvider({ children }: PropsWithChildren) {
 
     const now = Date.now();
     const jot: Jot = {
+      ...emptyContent(kind),
+      versions: [],
       accent: ACCENT_COLORS[jotsRef.current.length % ACCENT_COLORS.length],
       createdAt: now,
       documentContent: '',
