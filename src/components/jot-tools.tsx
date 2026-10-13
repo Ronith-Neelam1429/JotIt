@@ -2,13 +2,14 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ActionRow, Button, Sheet, ui } from '@/components/jot-controls';
-import { ACCENTS, JOT_ICONS, type Jot } from '@/lib/jot-model';
+import { ACCENTS, JOT_ICONS, type Jot, type JotVersion } from '@/lib/jot-model';
 import { useJots } from '@/providers/jots-provider';
 
 export function JotTools({ jot, visible, onClose, onRename, onChangeKind, onTrash }: {
   jot: Jot; visible: boolean; onClose: () => void; onRename: () => void; onChangeKind: () => void; onTrash: () => void;
 }) {
-  const { jots, organizeJot, updateAppearance, pinJot, archiveJot, duplicateJot, completeAll, clearCompleted, restoreEntry } = useJots();
+  const { jots, restoreVersion, organizeJot, updateAppearance, pinJot, archiveJot, duplicateJot, completeAll, clearCompleted, restoreEntry } = useJots();
+  const [selectedVersion, setSelectedVersion] = useState<JotVersion | null>(null);
   const [folderDraft, setFolderDraft] = useState('');
   const [tagsDraft, setTagsDraft] = useState('');
   const [panel, setPanel] = useState<string | null>(null);
@@ -43,7 +44,27 @@ export function JotTools({ jot, visible, onClose, onRename, onChangeKind, onTras
           }} />
         <ActionRow icon="↶" title="Deleted items" description={`${jot.deletedEntries.length} items available to restore`} onPress={() => open('deleted')} />
       </> : null}
+      <ActionRow icon="◷" title="Version history" description={`${jot.versions.length} saved versions`} onPress={() => { setSelectedVersion(null); open('history'); }} />
       <ActionRow icon="♲" title="Move to Trash" description="Recoverable for 30 days" danger onPress={onTrash} />
+    </Sheet>
+    <Sheet title="Version history" visible={panel === 'history'} onClose={() => setPanel(null)} description="Preview your jot before a change. Up to 30 recent versions are kept; larger jots keep fewer.">
+      {selectedVersion ? <>
+        <Button label="‹ All versions" onPress={() => setSelectedVersion(null)} />
+        <Text style={ui.heading}>{selectedVersion.content.title}</Text>
+        <Text style={ui.description}>{new Date(selectedVersion.savedAt).toLocaleString()} · Before: {selectedVersion.label.toLocaleLowerCase()}</Text>
+        {selectedVersion.content.kind === 'document' ? <Text selectable style={styles.versionText}>{selectedVersion.content.documentContent || 'Blank jot'}</Text>
+          : selectedVersion.content.entries.map((entry) => <View key={entry.id} style={styles.versionItem}>
+            <Text style={styles.versionText}>{entry.completed ? '☑' : '☐'} {entry.text}{entry.quantity ? ` · ${entry.quantity}` : ''}</Text>
+            {entry.note ? <Text style={ui.description}>{entry.note}</Text> : null}
+          </View>)}
+        <Button label="Restore this version" selected onPress={() => {
+          setPanel(null); setTimeout(() => Alert.alert('Restore this version?', 'Your current version will stay in history, so you can return to it.', [
+            { text: 'Cancel', style: 'cancel' }, { text: 'Restore', onPress: () => restoreVersion(jot.id, selectedVersion.id) },
+          ]), 250);
+        }} />
+      </> : jot.versions.length ? [...jot.versions].reverse().map((version) => <ActionRow key={version.id} icon="◷"
+        title={new Date(version.savedAt).toLocaleString()} description={`Before: ${version.label.toLocaleLowerCase()}`} onPress={() => setSelectedVersion(version)} />)
+        : <Text style={ui.description}>Versions appear automatically as you make changes. Your first edit will preserve this starting point.</Text>}
     </Sheet>
     <Sheet title="Tags & folder" visible={panel === 'organize'} onClose={() => setPanel(null)} description="Choose an existing folder or type a new one. Tags can belong to many jots.">
       <Text style={ui.label}>FOLDER</Text>
@@ -81,6 +102,8 @@ export function JotTools({ jot, visible, onClose, onRename, onChangeKind, onTras
   </>;
 }
 const styles = StyleSheet.create({
+  versionText: { fontSize: 16, lineHeight: 25, color: '#26332D' },
+  versionItem: { gap: 4, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#E7E4DC' },
   preview: { padding: 22, borderRadius: 22, flexDirection: 'row', gap: 18, alignItems: 'center' },
   previewIcon: { fontSize: 36 }, previewTitle: { flex: 1, color: '#17231E', fontSize: 24, fontWeight: '700' },
   swatch: { width: 48, height: 48, borderRadius: 16, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: 'transparent' },

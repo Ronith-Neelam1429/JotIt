@@ -59,3 +59,18 @@ test('undo groups typing, supports redo and clears redo when a new branch is edi
   assert.equal(stepUndo(undone.state, a, 'redo').content.documentContent, 'hello');
   assert.equal(recordUndo(undone.state, a, false, 12000).future.length, 0);
 });
+
+test('version checkpoints preserve the prior state and bound encrypted history size', async () => {
+  const { emptyContent, checkpoint } = await import('../src/lib/jot-model.ts');
+  let jot = { ...emptyContent('document'), versions: [], documentContent: 'start' };
+  const original = jot;
+  for (let i = 0; i < 60; i++) {
+    const next = { ...jot, documentContent: `${i}:` + 'word '.repeat(6000) };
+    next.versions = checkpoint(jot, next, false, 10000 + i);
+    jot = next;
+  }
+  assert.ok(jot.versions.length <= 30);
+  assert.ok(new TextEncoder().encode(JSON.stringify(jot.versions)).length <= 350000);
+  assert.equal(original.documentContent, 'start');
+  assert.ok(jot.versions.at(-1).content.documentContent.startsWith('58:'));
+});

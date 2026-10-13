@@ -158,3 +158,23 @@ export function stepUndo(state: UndoState, current: JotContent, direction: 'undo
     ? { past: state.past.slice(0, -1), future: [...state.future, contentOf(current)], lastEdit: 0, groupStarted: 0 }
     : { past: [...state.past, contentOf(current)], future: state.future.slice(0, -1), lastEdit: 0, groupStarted: 0 } };
 }
+
+export function changeLabel(before: Jot, after: Jot) {
+  if (before.title !== after.title) return 'Renamed jot';
+  if (before.kind !== after.kind) return 'Changed jot format';
+  if (before.documentContent !== after.documentContent) return 'Edited free write';
+  if (before.entries.length > after.entries.length) return 'Removed list items';
+  if (before.entries.length < after.entries.length) return 'Added list items';
+  if (JSON.stringify(before.entries) !== JSON.stringify(after.entries)) return 'Updated list items';
+  if (before.accent !== after.accent || before.emoji !== after.emoji) return 'Changed appearance';
+  return 'Organized jot';
+}
+export function checkpoint(before: Jot, after: Jot, typing: boolean, now = Date.now()): JotVersion[] {
+  const label = changeLabel(before, after);
+  const last = before.versions.at(-1);
+  if (typing && last?.label === label && now - last.savedAt < 30000) return before.versions;
+  let versions = [...before.versions, { id: createId(), savedAt: now, label, content: contentOf(before) }].slice(-30);
+  // Keep encrypted payloads comfortably below Firestore's 1 MiB document limit.
+  while (versions.length > 1 && new TextEncoder().encode(JSON.stringify(versions)).length > 350000) versions = versions.slice(1);
+  return versions;
+}
