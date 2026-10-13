@@ -2,13 +2,14 @@ import { createContext, type PropsWithChildren, useContext, useEffect, useRef, u
 import { AppState } from 'react-native';
 
 import { permanentlyDeleteJot, saveJot, subscribeToJots } from '@/lib/firebase-jots';
-import { ACCENTS, createId, deleteEntries, restoreEntry as restoreDeletedEntry, emptyContent, contentOf, type JotContent, type Jot, type JotKind } from '@/lib/jot-model';
+import { ACCENTS, createId, deleteEntries, restoreEntry as restoreDeletedEntry, emptyContent, contentOf, normalizeTags, type JotContent, type Jot, type JotKind } from '@/lib/jot-model';
 import { getOrCreateJotEncryptionKey, type JotEncryptionKey } from '@/lib/jot-encryption';
 import { useAuth } from '@/providers/auth-provider';
 
 export type { Jot, JotEntry, JotKind } from '@/lib/jot-model';
 
 type JotsContextValue = {
+  organizeJot: (id: string, folder: string, tags: string[]) => void;
   pinJot: (id: string, pinned: boolean) => void;
   archiveJot: (id: string, archived: boolean) => void;
   duplicateJot: (id: string, asTemplate?: boolean) => Jot;
@@ -169,6 +170,9 @@ export function JotsProvider({ children }: PropsWithChildren) {
     scheduleSave(jot);
     return jot;
   }
+  function organizeJot(id: string, folder: string, tags: string[]) {
+    edit(id, (jot) => ({ ...jot, folder: folder.trim().slice(0, 50), tags: normalizeTags(tags) }));
+  }
   function pinJot(id: string, pinned: boolean) {
     edit(id, (jot) => ({ ...jot, pinned }));
   }
@@ -261,7 +265,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
       throw error;
     }
   }
-  return <JotsContext.Provider value={{ pinJot, archiveJot, duplicateJot, completeAll, clearCompleted, restoreEntry, updateAppearance, addEntry, changeJotKind, createJot, deleteJotPermanently,
+  return <JotsContext.Provider value={{ organizeJot, pinJot, archiveJot, duplicateJot, completeAll, clearCompleted, restoreEntry, updateAppearance, addEntry, changeJotKind, createJot, deleteJotPermanently,
     isLoading, isSaving, jots: jots.filter((jot) => jot.trashedAt === null), removeEntry, renameEntry,
     renameJot, reorderEntries, restoreJot, retrySync, syncError, toggleEntry, trashJots,
     trashedJots: jots.filter((jot) => jot.trashedAt !== null), updateDocument }}>{children}</JotsContext.Provider>;

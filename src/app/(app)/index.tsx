@@ -16,7 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { matchesSearch, searchPreview, relativeDate, sortJots, type JotSort } from '@/lib/jot-model';
-import { Button, ui } from '@/components/jot-controls';
+import { Button, Sheet, ui } from '@/components/jot-controls';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import { useAuth } from '@/providers/auth-provider';
 import { type Jot, type JotKind, useJots } from '@/providers/jots-provider';
@@ -50,11 +50,14 @@ function getJotMeta(jot: Jot) {
 export default function HomeScreen() {
   const { user } = useAuth();
   const { createJot: createStoredJot, isLoading, jots: allJots, syncError, trashJots } = useJots();
+  const [folder, setFolder] = useState<string | null>(null);
+  const [tag, setTag] = useState<string | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [search, setSearch] = useState('');
   const query = useDeferredValue(search);
   const [includeArchive, setIncludeArchive] = useState(false);
   const [sort, setSort] = useState<JotSort>('updated');
-  const jots = useMemo(() => sortJots(allJots.filter((jot) => (!jot.archivedAt || includeArchive) && !jot.isTemplate && matchesSearch(jot, query)), sort), [allJots, sort, query, includeArchive]);
+  const jots = useMemo(() => sortJots(allJots.filter((jot) => (!jot.archivedAt || includeArchive) && !jot.isTemplate && matchesSearch(jot, query) && (folder === null || jot.folder === folder) && (tag === null || jot.tags.includes(tag))), sort), [allJots, sort, query, includeArchive, folder, tag]);
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
   const [jotTitle, setJotTitle] = useState('');
@@ -159,6 +162,7 @@ export default function HomeScreen() {
 
         <View style={ui.row}>
           <Button label={`Archive · ${allJots.filter((jot) => jot.archivedAt).length}`} onPress={() => router.push('/archive')} />
+          <Button label={folder || (tag ? `#${tag}` : 'Folders & tags')} selected={folder !== null || tag !== null} onPress={() => setFiltersOpen(true)} />
           <Button label="Trash" onPress={() => router.push('/trash')} />
         </View>
 
@@ -233,6 +237,7 @@ export default function HomeScreen() {
                     <Text numberOfLines={1} style={styles.jotPreview}>
                       {query.trim() ? searchPreview(jot, query) : getJotPreview(jot)}
                     </Text>
+                    {jot.folder || jot.tags.length ? <Text numberOfLines={1} style={styles.itemCount}>{[jot.folder, ...jot.tags.map((value) => `#${value}`)].filter(Boolean).join(' · ')}</Text> : null}
                     <View style={styles.jotMetaRow}>
                       <Text style={styles.jotType}>
                         {jot.archivedAt ? 'Archived · ' : ''}{jot.kind === 'list' ? 'List' : 'Free write'}
@@ -262,9 +267,9 @@ export default function HomeScreen() {
             <View style={styles.emptyIcon}>
               <Text style={styles.emptyIconText}>✎</Text>
             </View>
-            <Text style={styles.emptyTitle}>{search ? 'No matching jots' : 'Your first jot starts here'}</Text>
+            <Text style={styles.emptyTitle}>{search || folder !== null || tag !== null ? 'No matching jots' : 'Your first jot starts here'}</Text>
             <Text style={styles.emptyDescription}>
-              {search ? 'Try another word, or include archived jots in your search.' : 'Create a jot for anything you want to remember or share.'}
+              {search || folder !== null || tag !== null ? 'Try another word or adjust your folder and tag filters.' : 'Create a jot for anything you want to remember or share.'}
             </Text>
             <Pressable
               accessibilityRole="button"
@@ -334,6 +339,17 @@ export default function HomeScreen() {
         </View>
       )}
 
+      <Sheet title="Find your space" visible={filtersOpen} onClose={() => setFiltersOpen(false)}>
+        <Text style={ui.label}>FOLDERS</Text><View style={ui.row}>
+          <Button label="All folders" selected={folder === null} onPress={() => setFolder(null)} />
+          <Button label="Unfiled" selected={folder === ''} onPress={() => setFolder('')} />
+          {[...new Set(allJots.map((jot) => jot.folder).filter(Boolean))].sort().map((name) => <Button key={name} label={name} selected={folder === name} onPress={() => setFolder(name)} />)}
+        </View><Text style={ui.label}>TAGS</Text><View style={ui.row}>
+          <Button label="All tags" selected={tag === null} onPress={() => setTag(null)} />
+          {[...new Set(allJots.flatMap((jot) => jot.tags))].sort().map((name) => <Button key={name} label={`#${name}`} selected={tag === name} onPress={() => setTag(name)} />)}
+        </View><Button label="Reset filters" onPress={() => { setFolder(null); setTag(null); }} />
+        <Text style={ui.description}>Add folders and tags from any jot’s options.</Text>
+      </Sheet>
       <Modal
         animationType="slide"
         onRequestClose={closeComposer}

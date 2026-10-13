@@ -1,20 +1,25 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { ActionRow, Sheet, ui } from '@/components/jot-controls';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActionRow, Button, Sheet, ui } from '@/components/jot-controls';
 import { ACCENTS, JOT_ICONS, type Jot } from '@/lib/jot-model';
 import { useJots } from '@/providers/jots-provider';
 
 export function JotTools({ jot, visible, onClose, onRename, onChangeKind, onTrash }: {
   jot: Jot; visible: boolean; onClose: () => void; onRename: () => void; onChangeKind: () => void; onTrash: () => void;
 }) {
-  const { updateAppearance, pinJot, archiveJot, duplicateJot, completeAll, clearCompleted, restoreEntry } = useJots();
+  const { jots, organizeJot, updateAppearance, pinJot, archiveJot, duplicateJot, completeAll, clearCompleted, restoreEntry } = useJots();
+  const [folderDraft, setFolderDraft] = useState('');
+  const [tagsDraft, setTagsDraft] = useState('');
   const [panel, setPanel] = useState<string | null>(null);
   function open(panelName: string) { onClose(); setTimeout(() => setPanel(panelName), 250); }
   return <>
     <Sheet title="Make it yours" visible={visible} onClose={onClose}>
       <ActionRow icon="✎" title="Rename" onPress={onRename} />
       <ActionRow icon="◉" title="Color & icon" description="A little personality for your jot" onPress={() => open('appearance')} />
+      <ActionRow icon="#" title="Tags & folder" description={[jot.folder, ...jot.tags.map((tag) => `#${tag}`)].filter(Boolean).join(' · ') || 'Give everything a place'} onPress={() => {
+        setFolderDraft(jot.folder); setTagsDraft(jot.tags.join(', ')); open('organize');
+      }} />
       <ActionRow icon="★" title={jot.pinned ? 'Unpin jot' : 'Pin jot'} description="Keep it at the top of your jots" onPress={() => { pinJot(jot.id, !jot.pinned); onClose(); }} />
       <ActionRow icon="▣" title={jot.archivedAt ? 'Move to your jots' : 'Archive jot'} description="Keep it safely, out of the way" onPress={() => {
         archiveJot(jot.id, !jot.archivedAt); onClose(); router.replace(jot.archivedAt ? '/' : '/archive');
@@ -36,6 +41,21 @@ export function JotTools({ jot, visible, onClose, onRename, onChangeKind, onTras
         <ActionRow icon="↶" title="Deleted items" description={`${jot.deletedEntries.length} items available to restore`} onPress={() => open('deleted')} />
       </> : null}
       <ActionRow icon="♲" title="Move to Trash" description="Recoverable for 30 days" danger onPress={onTrash} />
+    </Sheet>
+    <Sheet title="Tags & folder" visible={panel === 'organize'} onClose={() => setPanel(null)} description="Choose an existing folder or type a new one. Tags can belong to many jots.">
+      <Text style={ui.label}>FOLDER</Text>
+      <TextInput accessibilityLabel="Folder name" value={folderDraft} onChangeText={setFolderDraft} maxLength={50}
+        placeholder="No folder" placeholderTextColor="#89938D" style={ui.input} />
+      <View style={ui.row}><Button label="No folder" selected={!folderDraft} onPress={() => setFolderDraft('')} />
+        {[...new Set(jots.map((item) => item.folder).filter(Boolean))].sort().map((folder) => <Button key={folder} label={folder}
+          selected={folderDraft === folder} onPress={() => setFolderDraft(folder)} />)}</View>
+      <Text style={ui.label}>TAGS · SEPARATE WITH COMMAS</Text>
+      <TextInput accessibilityLabel="Tags, separated by commas" value={tagsDraft} onChangeText={setTagsDraft} maxLength={400}
+        autoCapitalize="none" placeholder="home, weekend, ideas" placeholderTextColor="#89938D" style={ui.input} />
+      <Text style={ui.description}>Up to 12 tags, 30 characters each.</Text>
+      <View style={ui.row}>{[...new Set(jots.flatMap((item) => item.tags))].sort().slice(0, 24).map((tag) => <Button key={tag} label={`#${tag}`}
+        onPress={() => setTagsDraft((current) => [...new Set([...current.split(',').map((value) => value.trim()).filter(Boolean), tag])].join(', '))} />)}</View>
+      <Button label="Save organization" selected onPress={() => { organizeJot(jot.id, folderDraft, tagsDraft.split(',')); setPanel(null); }} />
     </Sheet>
     <Sheet title="Deleted items" visible={panel === 'deleted'} onClose={() => setPanel(null)} description="Tap an item to restore it to the list.">
       {jot.deletedEntries.length ? [...jot.deletedEntries].reverse().map((entry) =>
