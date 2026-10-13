@@ -1,8 +1,9 @@
 import { Link, router } from 'expo-router';
-import { useDeferredValue, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -15,6 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { plainDocument } from '@/lib/jot-format';
 import { matchesSearch, searchPreview, relativeDate, sortJots, type JotSort } from '@/lib/jot-model';
 import { Button, Sheet, ui } from '@/components/jot-controls';
 import { ProfileAvatar } from '@/components/profile-avatar';
@@ -33,7 +35,7 @@ function getJotPreview(jot: Jot) {
     return jot.entries.at(-1)?.text ?? 'No entries yet';
   }
 
-  return jot.documentContent.trim().replace(/\s+/g, ' ') || 'Blank document';
+  return plainDocument(jot.documentContent).trim().replace(/\s+/g, ' ') || 'Blank document';
 }
 
 function getJotMeta(jot: Jot) {
@@ -41,15 +43,16 @@ function getJotMeta(jot: Jot) {
     return `${jot.entries.length} ${jot.entries.length === 1 ? 'item' : 'items'}`;
   }
 
-  const wordCount = jot.documentContent.trim()
-    ? jot.documentContent.trim().split(/\s+/).length
+  const plain = plainDocument(jot.documentContent).trim();
+  const wordCount = plain
+    ? plain.split(/\s+/).length
     : 0;
   return `${wordCount} ${wordCount === 1 ? 'word' : 'words'}`;
 }
 
 export default function HomeScreen() {
   const { user } = useAuth();
-  const { createJot: createStoredJot, isLoading, jots: allJots, syncError, trashJots } = useJots();
+  const { createJot: createStoredJot, isLoading, jots: allJots, syncError, retrySync, trashJots } = useJots();
   const [folder, setFolder] = useState<string | null>(null);
   const [tag, setTag] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -63,7 +66,6 @@ export default function HomeScreen() {
   const [jotTitle, setJotTitle] = useState('');
   const [selectedJotIds, setSelectedJotIds] = useState<Set<string>>(new Set());
   const [selectedKind, setSelectedKind] = useState<JotKind | null>(null);
-  const longPressedJotIdRef = useRef<string | null>(null);
 
   const firstName = useMemo(
     () => user?.displayName?.trim().split(/\s+/)[0] || 'there',
@@ -124,9 +126,10 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={styles.screen}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}>
+      <FlatList data={isLoading ? [] : jots} keyExtractor={(jot) => jot.id}
+        contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false} ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+        ListHeaderComponent={<>
         <View style={styles.topRow}>
           <View style={styles.brandButton}>
             <Text style={styles.brandGridIcon}>▦</Text>
@@ -153,16 +156,16 @@ export default function HomeScreen() {
             {getGreeting()}, {firstName}
           </Text>
           <Text accessibilityRole="header" style={styles.heading}>
-            Let’s remember it.{`\n`}Together.
+            A place for every thought.
           </Text>
           <Text style={styles.description}>
-            Quick lists and little reminders, shared with the people who matter.
+            Your lists, notes, and little reminders. All within reach.
           </Text>
         </View>
 
-        <View style={ui.row}>
+        <View style={[ui.row, { marginBottom: 14 }]}>
           <Button label={`Archive · ${allJots.filter((jot) => jot.archivedAt).length}`} onPress={() => router.push('/archive')} />
-          <Button label={folder || (tag ? `#${tag}` : 'Folders & tags')} selected={folder !== null || tag !== null} onPress={() => setFiltersOpen(true)} />
+          <Button label={folder === '' ? 'Unfiled' : [folder, tag ? `#${tag}` : null].filter(Boolean).join(' · ') || 'Folders & tags'} selected={folder !== null || tag !== null} onPress={() => setFiltersOpen(true)} />
           <Button label="Templates" onPress={() => router.push('/templates')} />
           <Button label="Trash" onPress={() => router.push('/trash')} />
         </View>
@@ -170,13 +173,13 @@ export default function HomeScreen() {
         <View style={styles.searchBox}>
           <Text style={styles.searchIcon}>⌕</Text>
           <TextInput accessibilityLabel="Search jots and their contents" placeholder="Search jots, items, notes…"
-            placeholderTextColor="#7A867F" value={search} onChangeText={setSearch} autoCorrect={false}
+            placeholderTextColor="#7A867F" value={search} onChangeText={(value) => { setSearch(value); endSelection(); if (!value) setIncludeArchive(false); }} autoCorrect={false}
             returnKeyType="search" style={styles.searchInput} />
-          {search ? <Button label="Clear" onPress={() => setSearch('')} /> : null}
+          {search ? <Button label="Clear" onPress={() => { setSearch(''); setIncludeArchive(false); }} /> : null}
         </View>
         {search ? <View style={ui.row}><Button label={includeArchive ? 'Including archive' : 'Include archive'}
           selected={includeArchive} onPress={() => setIncludeArchive(!includeArchive)} /></View> : null}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={ui.row}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={ui.row} style={{ marginTop: 10 }}>
           {(['updated', 'created', 'title'] as const).map((value) => <Button key={value}
             label={{ updated: 'Recently updated', created: 'Date created', title: 'Title A–Z' }[value]}
             selected={sort === value} onPress={() => setSort(value)} />)}
@@ -185,16 +188,10 @@ export default function HomeScreen() {
           <View style={styles.syncError}>
             <Text style={styles.syncErrorTitle}>Couldn’t sync your jots</Text>
             <Text style={styles.syncErrorDescription}>{syncError}</Text>
+            <Button label="Retry sync" onPress={retrySync} />
           </View>
         ) : null}
 
-        {isLoading ? (
-          <View style={styles.loadingState}>
-            <ActivityIndicator color="#25634D" size="large" />
-            <Text style={styles.loadingLabel}>Loading your jots…</Text>
-          </View>
-        ) : jots.length ? (
-          <>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>
                 {isSelecting ? 'Select jots' : search ? 'Search results' : 'Your jots'}
@@ -202,8 +199,28 @@ export default function HomeScreen() {
               <Text style={styles.sectionCount}>{jots.length}</Text>
             </View>
 
-            <View style={styles.jotList}>
-              {jots.map((jot) => (
+        </>}
+        ListEmptyComponent={isLoading ? <View style={styles.loadingState}><ActivityIndicator color="#25634D" /><Text style={styles.loadingLabel}>Loading your jots…</Text></View> : (
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIcon}>
+              <Text style={styles.emptyIconText}>✎</Text>
+            </View>
+            <Text style={styles.emptyTitle}>{search || folder !== null || tag !== null ? 'No matching jots' : 'Your first jot starts here'}</Text>
+            <Text style={styles.emptyDescription}>
+              {search || folder !== null || tag !== null ? 'Try another word or adjust your folder and tag filters.' : 'Create a jot for anything you want to remember or share.'}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                if (search || folder !== null || tag !== null) { setSearch(''); setFolder(null); setTag(null); setIncludeArchive(false); }
+                else setIsComposerOpen(true);
+              }}
+              style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}>
+              <Text style={styles.emptyButtonLabel}>{search || folder !== null || tag !== null ? 'Reset search & filters' : 'Create your first jot'}</Text>
+            </Pressable>
+          </View>
+        )}
+        renderItem={({ item: jot }) => (
                 <Pressable
                   accessibilityLabel={`Open ${jot.title}`}
                   accessibilityRole="button"
@@ -211,14 +228,9 @@ export default function HomeScreen() {
                   delayLongPress={350}
                   key={jot.id}
                   onLongPress={() => {
-                    longPressedJotIdRef.current = jot.id;
                     beginSelection(jot.id);
                   }}
                   onPress={() => {
-                    if (longPressedJotIdRef.current === jot.id) {
-                      longPressedJotIdRef.current = null;
-                      return;
-                    }
                     if (isSelecting) toggleSelection(jot.id);
                     else router.push({ pathname: '/jot/[jotId]', params: { jotId: jot.id } });
                   }}
@@ -260,27 +272,8 @@ export default function HomeScreen() {
                     <Text style={styles.chevron}>›</Text>
                   )}
                 </Pressable>
-              ))}
-            </View>
-          </>
-        ) : (
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIcon}>
-              <Text style={styles.emptyIconText}>✎</Text>
-            </View>
-            <Text style={styles.emptyTitle}>{search || folder !== null || tag !== null ? 'No matching jots' : 'Your first jot starts here'}</Text>
-            <Text style={styles.emptyDescription}>
-              {search || folder !== null || tag !== null ? 'Try another word or adjust your folder and tag filters.' : 'Create a jot for anything you want to remember or share.'}
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setIsComposerOpen(true)}
-              style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}>
-              <Text style={styles.emptyButtonLabel}>Create your first jot</Text>
-            </Pressable>
-          </View>
         )}
-      </ScrollView>
+      />
 
       {isSelecting ? (
         <View style={styles.selectionDock}>
@@ -509,10 +502,10 @@ const styles = StyleSheet.create({
   },
   heading: {
     color: '#17231E',
-    fontSize: 43,
+    fontSize: 35,
     fontWeight: '700',
-    letterSpacing: -1.7,
-    lineHeight: 47,
+    letterSpacing: -1.1,
+    lineHeight: 40,
   },
   description: { color: '#66746D', fontSize: 15, lineHeight: 22, maxWidth: 360 },
   syncError: {
