@@ -8,13 +8,16 @@ import { useJots } from '@/providers/jots-provider';
 export function JotTools({ jot, visible, onClose, onRename, onChangeKind, onTrash }: {
   jot: Jot; visible: boolean; onClose: () => void; onRename: () => void; onChangeKind: () => void; onTrash: () => void;
 }) {
-  const { updateAppearance, duplicateJot, completeAll, clearCompleted, restoreEntry } = useJots();
+  const { updateAppearance, archiveJot, duplicateJot, completeAll, clearCompleted, restoreEntry } = useJots();
   const [panel, setPanel] = useState<string | null>(null);
   function open(panelName: string) { onClose(); setTimeout(() => setPanel(panelName), 250); }
   return <>
     <Sheet title="Make it yours" visible={visible} onClose={onClose}>
       <ActionRow icon="✎" title="Rename" onPress={onRename} />
       <ActionRow icon="◉" title="Color & icon" description="A little personality for your jot" onPress={() => open('appearance')} />
+      <ActionRow icon="▣" title={jot.archivedAt ? 'Move to your jots' : 'Archive jot'} description="Keep it safely, out of the way" onPress={() => {
+        archiveJot(jot.id, !jot.archivedAt); onClose(); router.replace(jot.archivedAt ? '/' : '/archive');
+      }} />
       <ActionRow icon="⧉" title="Duplicate jot" description="Make an independent copy" onPress={() => {
         const copy = duplicateJot(jot.id); onClose(); router.push({ pathname: '/jot/[jotId]', params: { jotId: copy.id } });
       }} />

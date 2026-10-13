@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Button, ui } from '@/components/jot-controls';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import { useAuth } from '@/providers/auth-provider';
 import { type Jot, type JotKind, useJots } from '@/providers/jots-provider';
@@ -47,7 +48,8 @@ function getJotMeta(jot: Jot) {
 
 export default function HomeScreen() {
   const { user } = useAuth();
-  const { createJot: createStoredJot, isLoading, jots, syncError, trashJots } = useJots();
+  const { createJot: createStoredJot, isLoading, jots: allJots, syncError, trashJots } = useJots();
+  const jots = allJots.filter((jot) => !jot.archivedAt && !jot.isTemplate);
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
   const [jotTitle, setJotTitle] = useState('');
@@ -148,6 +150,11 @@ export default function HomeScreen() {
           <Text style={styles.description}>
             Quick lists and little reminders, shared with the people who matter.
           </Text>
+        </View>
+
+        <View style={ui.row}>
+          <Button label={`Archive · ${allJots.filter((jot) => jot.archivedAt).length}`} onPress={() => router.push('/archive')} />
+          <Button label="Trash" onPress={() => router.push('/trash')} />
         </View>
 
         {syncError ? (

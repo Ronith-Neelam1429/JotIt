@@ -9,6 +9,7 @@ import { useAuth } from '@/providers/auth-provider';
 export type { Jot, JotEntry, JotKind } from '@/lib/jot-model';
 
 type JotsContextValue = {
+  archiveJot: (id: string, archived: boolean) => void;
   duplicateJot: (id: string, asTemplate?: boolean) => Jot;
   completeAll: (id: string) => void;
   clearCompleted: (id: string) => void;
@@ -167,6 +168,9 @@ export function JotsProvider({ children }: PropsWithChildren) {
     scheduleSave(jot);
     return jot;
   }
+  function archiveJot(id: string, archived: boolean) {
+    edit(id, (jot) => ({ ...jot, archivedAt: archived ? Date.now() : null }));
+  }
   function duplicateJot(id: string, asTemplate = false) {
     const original = jotsRef.current.find((jot) => jot.id === id);
     if (!original) throw new Error('This jot is no longer available.');
@@ -253,7 +257,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
       throw error;
     }
   }
-  return <JotsContext.Provider value={{ duplicateJot, completeAll, clearCompleted, restoreEntry, updateAppearance, addEntry, changeJotKind, createJot, deleteJotPermanently,
+  return <JotsContext.Provider value={{ archiveJot, duplicateJot, completeAll, clearCompleted, restoreEntry, updateAppearance, addEntry, changeJotKind, createJot, deleteJotPermanently,
     isLoading, isSaving, jots: jots.filter((jot) => jot.trashedAt === null), removeEntry, renameEntry,
     renameJot, reorderEntries, restoreJot, retrySync, syncError, toggleEntry, trashJots,
     trashedJots: jots.filter((jot) => jot.trashedAt !== null), updateDocument }}>{children}</JotsContext.Provider>;
