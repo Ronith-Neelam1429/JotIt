@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { FreeWriteEditor } from '@/components/free-write-editor';
 import { Button } from '@/components/jot-controls';
 import { JotTools } from '@/components/jot-tools';
 import { JotEntryRow } from '@/components/jot-entry-row';
@@ -348,18 +349,7 @@ export default function JotScreen() {
             <Text style={styles.documentMeta}>
               {jot.isTemplate ? 'Template · ' : jot.archivedAt ? 'Archived · ' : ''}Free write · {wordCount} {wordCount === 1 ? 'word' : 'words'}
             </Text>
-            <TextInput
-              accessibilityLabel="Free write jot"
-              autoFocus
-              multiline
-              onChangeText={(content) => updateDocument(jot.id, content)}
-              placeholder="Start writing…"
-              placeholderTextColor="#9AA39E"
-              selectionColor="#25634D"
-              style={styles.documentInput}
-              textAlignVertical="top"
-              value={jot.documentContent}
-            />
+            <FreeWriteEditor content={jot.documentContent} onChange={(content) => updateDocument(jot.id, content)} />
           </View>
         </KeyboardAvoidingView>
         {optionsModal}

@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FormattedDocument } from '@/components/free-write-editor';
 import { ActionRow, Button, Sheet, ui } from '@/components/jot-controls';
 import { ACCENTS, JOT_ICONS, type Jot, type JotVersion } from '@/lib/jot-model';
 import { useJots } from '@/providers/jots-provider';
@@ -52,7 +53,7 @@ export function JotTools({ jot, visible, onClose, onRename, onChangeKind, onTras
         <Button label="‹ All versions" onPress={() => setSelectedVersion(null)} />
         <Text style={ui.heading}>{selectedVersion.content.title}</Text>
         <Text style={ui.description}>{new Date(selectedVersion.savedAt).toLocaleString()} · Before: {selectedVersion.label.toLocaleLowerCase()}</Text>
-        {selectedVersion.content.kind === 'document' ? <Text selectable style={styles.versionText}>{selectedVersion.content.documentContent || 'Blank jot'}</Text>
+        {selectedVersion.content.kind === 'document' ? <FormattedDocument content={selectedVersion.content.documentContent} />
           : selectedVersion.content.entries.map((entry) => <View key={entry.id} style={styles.versionItem}>
             <Text style={styles.versionText}>{entry.completed ? '☑' : '☐'} {entry.text}{entry.quantity ? ` · ${entry.quantity}` : ''}</Text>
             {entry.note ? <Text style={ui.description}>{entry.note}</Text> : null}
