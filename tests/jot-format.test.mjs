@@ -13,6 +13,7 @@ test('focused formatting renders headings, nested emphasis, underline, highlight
   assert.ok(runs.some((r) => r.highlight));
   assert.ok(runs.some((r) => r.href === 'https://example.com'));
   assert.deepEqual(blocks.filter((b) => b.checked !== undefined).map((b) => b.checked), [false, true]);
+  assert.deepEqual(blocks.filter((b) => b.checked !== undefined).map((b) => b.runs.map((r) => r.text).join('')), ['Todo', 'Done']);
   assert.ok(blocks.some((b) => b.prefix === '2.'));
 });
 test('format actions respect selected lines and toggle inline formatting', () => {

@@ -41,7 +41,7 @@ export function documentBlocks(source: string): DocumentBlock[] {
     return tokens.flatMap((token): DocumentBlock[] => {
       if (token.type === 'space') return [];
       if (token.type === 'list') return token.items.flatMap((item: { tokens: Token[]; task?: boolean; checked?: boolean }, index: number) => {
-        const content = blocks(item.tokens, indent + 1);
+        const content = blocks(item.tokens.filter((child) => child.type !== 'checkbox'), indent + 1);
         const [first = { runs: [{ text: '' }] }, ...rest] = content;
         return [{ ...first, indent, prefix: item.task ? undefined : token.ordered ? `${Number(token.start) + index}.` : '•',
           ...(item.task ? { checked: Boolean(item.checked), checkboxIndex: 0 } : {}) }, ...rest];

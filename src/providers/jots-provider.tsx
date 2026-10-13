@@ -263,7 +263,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
   }
   async function changeJotKind(id: string, kind: JotKind) {
     edit(id, (jot) => jot.kind === kind ? jot : ({ ...jot, kind,
-      documentContent: kind === 'document' ? jot.entries.map((entry) => `${entry.completed ? '[x]' : '-'} ${entry.text}${entry.quantity ? ` (${entry.quantity})` : ''}${entry.note ? ` — ${entry.note.replace(/\n/g, ' ')}` : ''}`).join('\n') : jot.documentContent,
+      documentContent: kind === 'document' ? jot.entries.map((entry) => `${entry.completed ? '- [x]' : '- [ ]'} ${entry.text}${entry.quantity ? ` (${entry.quantity})` : ''}${entry.note ? ` — ${entry.note.replace(/\n/g, ' ')}` : ''}`).join('\n') : jot.documentContent,
       entries: kind === 'list' ? jot.documentContent.split(/\r?\n/).filter((line) => line.trim()).map((line) => ({
         id: createId(), createdAt: Date.now(), completed: /^(?:[-*•]\s*)?\[[xX]\]/.test(line.trim()),
         text: line.trim().replace(/^(?:[-*•]\s*)?\[[ xX]\]\s*|^(?:[-*•]|\d+[.)]|#{1,3})\s+/, ''),
@@ -274,7 +274,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
     ids.forEach((id) => edit(id, (jot) => ({ ...jot, trashedAt: Date.now() })));
   }
   async function restoreJot(id: string) {
-    edit(id, (jot) => ({ ...jot, trashedAt: null, archivedAt: null, isTemplate: false }));
+    edit(id, (jot) => ({ ...jot, trashedAt: null }));
   }
   async function deleteJotPermanently(id: string) {
     const previous = jotsRef.current.find((jot) => jot.id === id);
