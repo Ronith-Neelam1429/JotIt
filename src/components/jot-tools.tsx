@@ -1,3 +1,4 @@
+import { exportJot, shareJotCopy } from '@/lib/jot-sharing';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -10,11 +11,20 @@ export function JotTools({ jot, visible, onClose, onRename, onChangeKind, onTras
   jot: Jot; visible: boolean; onClose: () => void; onRename: () => void; onChangeKind: () => void; onTrash: () => void;
 }) {
   const { jots, restoreVersion, organizeJot, updateAppearance, pinJot, archiveJot, duplicateJot, completeAll, clearCompleted, restoreEntry } = useJots();
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
   const [selectedVersion, setSelectedVersion] = useState<JotVersion | null>(null);
   const [folderDraft, setFolderDraft] = useState('');
   const [tagsDraft, setTagsDraft] = useState('');
   const [panel, setPanel] = useState<string | null>(null);
   function open(panelName: string) { onClose(); setTimeout(() => setPanel(panelName), 250); }
+  async function handleExport(format: 'txt' | 'md' | 'share') {
+    if (exporting) return;
+    setExporting(true); setExportError('');
+    try { if (format === 'share') await shareJotCopy(jot); else await exportJot(jot, format); }
+    catch (error) { setExportError(error instanceof Error ? error.message : 'Could not prepare the copy. Try again.'); }
+    finally { setExporting(false); }
+  }
   return <>
     <Sheet title="Make it yours" visible={visible} onClose={onClose}>
       <ActionRow icon="✎" title="Rename" onPress={onRename} />
@@ -45,8 +55,16 @@ export function JotTools({ jot, visible, onClose, onRename, onChangeKind, onTras
           }} />
         <ActionRow icon="↶" title="Deleted items" description={`${jot.deletedEntries.length} items available to restore`} onPress={() => open('deleted')} />
       </> : null}
+      <ActionRow icon="↗" title="Share & export" description="Send a copy or save a file" onPress={() => { setExportError(''); open('export'); }} />
       <ActionRow icon="◷" title="Version history" description={`${jot.versions.length} saved versions`} onPress={() => { setSelectedVersion(null); open('history'); }} />
       <ActionRow icon="♲" title="Move to Trash" description="Recoverable for 30 days" danger onPress={onTrash} />
+    </Sheet>
+    <Sheet title="Share & export" visible={panel === 'export'} onClose={() => { if (!exporting) setPanel(null); }} description="Share a snapshot of this jot. Recipients can read the copy without access to your original or its history.">
+      <ActionRow icon="↗" title="Share a copy" description="Open the system share sheet" disabled={exporting} onPress={() => void handleExport('share')} />
+      <ActionRow icon="Aa" title="Text file" description="A simple, readable .txt file" disabled={exporting} onPress={() => void handleExport('txt')} />
+      <ActionRow icon="#" title="Markdown file" description="Keep headings, lists, and formatting" disabled={exporting} onPress={() => void handleExport('md')} />
+      {exporting ? <Text accessibilityLiveRegion="polite" style={ui.description}>Preparing your copy…</Text> : null}
+      {exportError ? <Text accessibilityLiveRegion="polite" style={ui.danger}>{exportError}</Text> : null}
     </Sheet>
     <Sheet title="Version history" visible={panel === 'history'} onClose={() => setPanel(null)} description="Preview your jot before a change. Up to 30 recent versions are kept; larger jots keep fewer.">
       {selectedVersion ? <>
