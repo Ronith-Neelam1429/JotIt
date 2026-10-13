@@ -37,3 +37,12 @@ test('sorting keeps pins first and respects each date and title mode', async () 
   assert.deepEqual(sortJots(jots, 'title').map((j) => j.id), ['c', 'b', 'a']);
   assert.equal(jots[0].id, 'a');
 });
+
+test('search finds accent-insensitive words across content, notes, quantities and labels', async () => {
+  const { emptyContent, matchesSearch } = await import('../src/lib/jot-model.ts');
+  const jot = { ...emptyContent(), title: 'Café', folder: 'Trips', tags: ['weekend'], entries: [
+    { id: 'a', text: 'Milk', note: 'Oat', quantity: '2 litres', completed: false, createdAt: 1 }], deletedEntries: [{ text: 'secret' }] };
+  assert.equal(matchesSearch(jot, 'cafe oat'), true);
+  assert.equal(matchesSearch(jot, '2 weekend trips'), true);
+  assert.equal(matchesSearch(jot, 'secret'), false);
+});

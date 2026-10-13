@@ -124,3 +124,20 @@ export function relativeDate(timestamp: number, now = Date.now()) {
   if (minutes < 10080) return `${Math.floor(minutes / 1440)}d ago`;
   return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
+
+export function searchText(jot: Jot) {
+  return [jot.title, jot.folder, ...jot.tags, jot.documentContent,
+    ...jot.entries.flatMap((entry) => [entry.text, entry.quantity ?? '', entry.note ?? ''])].join('\n');
+}
+function fold(text: string) { return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase(); }
+export function matchesSearch(jot: Jot, query: string) {
+  const haystack = fold(searchText(jot));
+  return fold(query).trim().split(/\s+/).every((term) => haystack.includes(term));
+}
+export function searchPreview(jot: Jot, query: string) {
+  const text = searchText(jot).replace(/\s+/g, ' ');
+  const term = fold(query).trim().split(/\s+/)[0];
+  const index = term ? fold(text).indexOf(term) : 0;
+  const start = Math.max(0, index - 24);
+  return `${start ? '…' : ''}${text.slice(start, start + 140)}${start + 140 < text.length ? '…' : ''}`;
+}

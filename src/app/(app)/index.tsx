@@ -1,5 +1,5 @@
 import { Link, router } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { relativeDate, sortJots, type JotSort } from '@/lib/jot-model';
+import { matchesSearch, searchPreview, relativeDate, sortJots, type JotSort } from '@/lib/jot-model';
 import { Button, ui } from '@/components/jot-controls';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import { useAuth } from '@/providers/auth-provider';
@@ -50,8 +50,11 @@ function getJotMeta(jot: Jot) {
 export default function HomeScreen() {
   const { user } = useAuth();
   const { createJot: createStoredJot, isLoading, jots: allJots, syncError, trashJots } = useJots();
+  const [search, setSearch] = useState('');
+  const query = useDeferredValue(search);
+  const [includeArchive, setIncludeArchive] = useState(false);
   const [sort, setSort] = useState<JotSort>('updated');
-  const jots = useMemo(() => sortJots(allJots.filter((jot) => !jot.archivedAt && !jot.isTemplate), sort), [allJots, sort]);
+  const jots = useMemo(() => sortJots(allJots.filter((jot) => (!jot.archivedAt || includeArchive) && !jot.isTemplate && matchesSearch(jot, query)), sort), [allJots, sort, query, includeArchive]);
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
   const [jotTitle, setJotTitle] = useState('');
@@ -159,6 +162,15 @@ export default function HomeScreen() {
           <Button label="Trash" onPress={() => router.push('/trash')} />
         </View>
 
+        <View style={styles.searchBox}>
+          <Text style={styles.searchIcon}>⌕</Text>
+          <TextInput accessibilityLabel="Search jots and their contents" placeholder="Search jots, items, notes…"
+            placeholderTextColor="#7A867F" value={search} onChangeText={setSearch} autoCorrect={false}
+            returnKeyType="search" style={styles.searchInput} />
+          {search ? <Button label="Clear" onPress={() => setSearch('')} /> : null}
+        </View>
+        {search ? <View style={ui.row}><Button label={includeArchive ? 'Including archive' : 'Include archive'}
+          selected={includeArchive} onPress={() => setIncludeArchive(!includeArchive)} /></View> : null}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={ui.row}>
           {(['updated', 'created', 'title'] as const).map((value) => <Button key={value}
             label={{ updated: 'Recently updated', created: 'Date created', title: 'Title A–Z' }[value]}
@@ -180,7 +192,7 @@ export default function HomeScreen() {
           <>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>
-                {isSelecting ? 'Select jots' : 'Your jots'}
+                {isSelecting ? 'Select jots' : search ? 'Search results' : 'Your jots'}
               </Text>
               <Text style={styles.sectionCount}>{jots.length}</Text>
             </View>
@@ -219,11 +231,11 @@ export default function HomeScreen() {
                       <Text style={styles.updatedAt}>{relativeDate(sort === 'created' ? jot.createdAt : jot.updatedAt)}</Text>
                     </View>
                     <Text numberOfLines={1} style={styles.jotPreview}>
-                      {getJotPreview(jot)}
+                      {query.trim() ? searchPreview(jot, query) : getJotPreview(jot)}
                     </Text>
                     <View style={styles.jotMetaRow}>
                       <Text style={styles.jotType}>
-                        {jot.kind === 'list' ? 'List' : 'Free write'}
+                        {jot.archivedAt ? 'Archived · ' : ''}{jot.kind === 'list' ? 'List' : 'Free write'}
                       </Text>
                       <Text style={styles.itemCount}>{getJotMeta(jot)}</Text>
                     </View>
@@ -250,9 +262,9 @@ export default function HomeScreen() {
             <View style={styles.emptyIcon}>
               <Text style={styles.emptyIconText}>✎</Text>
             </View>
-            <Text style={styles.emptyTitle}>Your first jot starts here</Text>
+            <Text style={styles.emptyTitle}>{search ? 'No matching jots' : 'Your first jot starts here'}</Text>
             <Text style={styles.emptyDescription}>
-              Create a jot for anything you want to remember or share.
+              {search ? 'Try another word, or include archived jots in your search.' : 'Create a jot for anything you want to remember or share.'}
             </Text>
             <Pressable
               accessibilityRole="button"
@@ -440,6 +452,9 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  searchBox: { flexDirection: 'row', alignItems: 'center', borderRadius: 18, backgroundColor: '#FFFFFF', borderColor: '#DADFD9', borderWidth: 1, paddingHorizontal: 12, gap: 8 },
+  searchIcon: { fontSize: 28, color: '#65746C' },
+  searchInput: { flex: 1, minHeight: 52, fontSize: 16, color: '#1D2B25' },
   screen: { backgroundColor: '#F6F5EF', flex: 1 },
   content: {
     alignSelf: 'center',
