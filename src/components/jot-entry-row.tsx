@@ -5,6 +5,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -24,7 +25,7 @@ type JotEntryRowProps = {
   isActive: boolean;
   onDelete: () => void;
   onDrag: () => void;
-  onRename: (text: string) => void;
+  onRename: (text: string, quantity: string, note: string) => void;
   onToggle: () => void;
 };
 
@@ -42,6 +43,8 @@ export function JotEntryRow({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
+  const [quantityDraft, setQuantityDraft] = useState(entry.quantity ?? '');
+  const [noteDraft, setNoteDraft] = useState(entry.note ?? '');
   const [renameDraft, setRenameDraft] = useState(entry.text);
 
   function openMenu() {
@@ -63,6 +66,8 @@ export function JotEntryRow({
   function openRename() {
     setIsMenuOpen(false);
     setRenameDraft(entry.text);
+    setQuantityDraft(entry.quantity ?? '');
+    setNoteDraft(entry.note ?? '');
     setTimeout(() => setIsRenameOpen(true), 100);
   }
 
@@ -75,7 +80,7 @@ export function JotEntryRow({
     const trimmedText = renameDraft.trim();
     if (!trimmedText) return;
 
-    onRename(trimmedText);
+    onRename(trimmedText, quantityDraft, noteDraft);
     setIsRenameOpen(false);
   }
 
@@ -123,9 +128,11 @@ export function JotEntryRow({
             <View style={[styles.checkbox, entry.completed && styles.checkboxCompleted]}>
               {entry.completed ? <Text style={styles.checkmark}>✓</Text> : null}
             </View>
-            <Text style={[styles.entryText, entry.completed && styles.entryTextCompleted]}>
-              {entry.text}
-            </Text>
+            <View style={styles.entryCopy}>
+              <Text style={[styles.entryText, entry.completed && styles.entryTextCompleted]}>{entry.text}</Text>
+              {entry.quantity ? <Text style={styles.quantity}>Qty · {entry.quantity}</Text> : null}
+              {entry.note ? <Text numberOfLines={2} style={styles.note}>{entry.note}</Text> : null}
+            </View>
           </Pressable>
           <Pressable
             accessibilityLabel={`Options for ${entry.text}`}
@@ -161,7 +168,7 @@ export function JotEntryRow({
               onPress={openRename}
               style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}>
               <Text style={styles.menuItemIcon}>✎</Text>
-              <Text style={styles.menuItemLabel}>Rename</Text>
+              <Text style={styles.menuItemLabel}>Edit details</Text>
             </Pressable>
             <View style={styles.menuDivider} />
             <Pressable
@@ -184,8 +191,8 @@ export function JotEntryRow({
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.renameBackdrop}>
-          <View accessibilityViewIsModal style={styles.renameCard}>
-            <Text accessibilityRole="header" style={styles.renameHeading}>Rename item</Text>
+          <ScrollView keyboardShouldPersistTaps="handled" accessibilityViewIsModal style={styles.renameCard} contentContainerStyle={{ paddingBottom: 22 }}>
+            <Text accessibilityRole="header" style={styles.renameHeading}>Edit item</Text>
             <TextInput
               accessibilityLabel="List item name"
               autoFocus
@@ -204,6 +211,13 @@ export function JotEntryRow({
             <Text style={styles.characterCount}>
               {renameDraft.length}/{ENTRY_TEXT_MAX_LENGTH}
             </Text>
+            <Text style={styles.fieldLabel}>Quantity (optional)</Text>
+            <TextInput accessibilityLabel="Item quantity" value={quantityDraft} onChangeText={setQuantityDraft}
+              maxLength={40} placeholder="e.g. 2, 500 g, 1 pack" placeholderTextColor="#909A95" style={styles.detailsInput} />
+            <Text style={styles.fieldLabel}>Note (optional)</Text>
+            <TextInput accessibilityLabel="Item note" value={noteDraft} onChangeText={setNoteDraft}
+              maxLength={1000} multiline placeholder="Brand, size, or a little reminder…" placeholderTextColor="#909A95"
+              style={[styles.detailsInput, { minHeight: 84, textAlignVertical: 'top' }]} />
             <View style={styles.renameActions}>
               <Pressable
                 accessibilityRole="button"
@@ -223,7 +237,7 @@ export function JotEntryRow({
                 <Text style={styles.saveLabel}>Save</Text>
               </Pressable>
             </View>
-          </View>
+          </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
     </>
@@ -267,6 +281,11 @@ const styles = StyleSheet.create({
   },
   checkboxCompleted: { backgroundColor: '#25634D', borderColor: '#25634D' },
   checkmark: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+  entryCopy: { flex: 1, gap: 5 },
+  quantity: { color: '#25634D', fontSize: 12, fontWeight: '700' },
+  note: { color: '#718078', fontSize: 13, lineHeight: 19 },
+  fieldLabel: { color: '#52625A', fontSize: 13, fontWeight: '600', marginTop: 14, marginBottom: 6 },
+  detailsInput: { borderColor: '#CBD2CE', borderWidth: 1, borderRadius: 10, padding: 12, minHeight: 48, color: '#1D2B25', backgroundColor: '#FFF', fontSize: 16 },
   entryText: { color: '#24332C', flex: 1, fontSize: 16, lineHeight: 23 },
   entryTextCompleted: { color: '#8A958F', textDecorationLine: 'line-through' },
   menuButton: {
@@ -323,6 +342,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FBFAF6',
     borderRadius: 16,
     maxWidth: 440,
+    maxHeight: '90%',
+    flexGrow: 0,
     padding: 22,
     width: '100%',
   },

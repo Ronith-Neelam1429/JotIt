@@ -21,7 +21,7 @@ type JotsContextValue = {
   isSaving: boolean;
   jots: Jot[];
   removeEntry: (jotId: string, entryId: string) => void;
-  renameEntry: (jotId: string, entryId: string, text: string) => void;
+  renameEntry: (jotId: string, entryId: string, text: string, quantity?: string, note?: string) => void;
   renameJot: (jotId: string, title: string) => Promise<void>;
   reorderEntries: (jotId: string, entryIds: string[]) => void;
   restoreJot: (jotId: string) => Promise<void>;
@@ -189,9 +189,9 @@ export function JotsProvider({ children }: PropsWithChildren) {
   function restoreEntry(id: string, entryId: string) {
     edit(id, (jot) => restoreDeletedEntry(jot, entryId));
   }
-  function renameEntry(id: string, entryId: string, text: string) {
+  function renameEntry(id: string, entryId: string, text: string, quantity = '', note = '') {
     if (!text.trim()) return;
-    edit(id, (jot) => ({ ...jot, entries: jot.entries.map((entry) => entry.id === entryId ? { ...entry, text: text.trim().slice(0, 500) } : entry) }));
+    edit(id, (jot) => ({ ...jot, entries: jot.entries.map((entry) => entry.id === entryId ? { ...entry, text: text.trim().slice(0, 500), quantity: quantity.trim().slice(0, 40), note: note.trim().slice(0, 1000) } : entry) }));
   }
   function reorderEntries(id: string, ids: string[]) {
     edit(id, (jot) => {
@@ -209,7 +209,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
   }
   async function changeJotKind(id: string, kind: JotKind) {
     edit(id, (jot) => jot.kind === kind ? jot : ({ ...jot, kind,
-      documentContent: kind === 'document' ? jot.entries.map((entry) => `${entry.completed ? '[x]' : '-'} ${entry.text}`).join('\n') : jot.documentContent,
+      documentContent: kind === 'document' ? jot.entries.map((entry) => `${entry.completed ? '[x]' : '-'} ${entry.text}${entry.quantity ? ` (${entry.quantity})` : ''}${entry.note ? ` — ${entry.note.replace(/\n/g, ' ')}` : ''}`).join('\n') : jot.documentContent,
       entries: kind === 'list' ? jot.documentContent.split(/\r?\n/).filter((line) => line.trim()).map((line) => ({
         id: createId(), createdAt: Date.now(), completed: /^(?:[-*•]\s*)?\[[xX]\]/.test(line.trim()),
         text: line.trim().replace(/^(?:[-*•]\s*)?\[[ xX]\]\s*|^(?:[-*•]|\d+[.)]|#{1,3})\s+/, ''),

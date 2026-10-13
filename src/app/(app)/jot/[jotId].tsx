@@ -417,7 +417,7 @@ export default function JotScreen() {
                 isActive={isActive}
                 onDelete={() => confirmRemoveEntry(item.id, item.text)}
                 onDrag={drag}
-                onRename={(text) => renameEntry(jot.id, item.id, text)}
+                onRename={(text, quantity, note) => renameEntry(jot.id, item.id, text, quantity, note)}
                 onToggle={() => toggleEntry(jot.id, item.id)}
               />
             </ScaleDecorator>
