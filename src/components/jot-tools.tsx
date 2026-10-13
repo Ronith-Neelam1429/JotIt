@@ -18,7 +18,7 @@ export function JotTools({ jot, visible, onClose, onRename, onChangeKind, onTras
   const [tagsDraft, setTagsDraft] = useState('');
   const [panel, setPanel] = useState<string | null>(null);
   function open(panelName: string) { onClose(); setTimeout(() => setPanel(panelName), 250); }
-  async function handleExport(format: 'txt' | 'md' | 'share') {
+  async function handleExport(format: 'txt' | 'md' | 'pdf' | 'share') {
     if (exporting) return;
     setExporting(true); setExportError('');
     try { if (format === 'share') await shareJotCopy(jot); else await exportJot(jot, format); }
@@ -63,6 +63,7 @@ export function JotTools({ jot, visible, onClose, onRename, onChangeKind, onTras
       <ActionRow icon="↗" title="Share a copy" description="Open the system share sheet" disabled={exporting} onPress={() => void handleExport('share')} />
       <ActionRow icon="Aa" title="Text file" description="A simple, readable .txt file" disabled={exporting} onPress={() => void handleExport('txt')} />
       <ActionRow icon="#" title="Markdown file" description="Keep headings, lists, and formatting" disabled={exporting} onPress={() => void handleExport('md')} />
+      <ActionRow icon="▤" title="PDF document" description="A polished copy, ready to save or print" disabled={exporting} onPress={() => void handleExport('pdf')} />
       {exporting ? <Text accessibilityLiveRegion="polite" style={ui.description}>Preparing your copy…</Text> : null}
       {exportError ? <Text accessibilityLiveRegion="polite" style={ui.danger}>{exportError}</Text> : null}
     </Sheet>

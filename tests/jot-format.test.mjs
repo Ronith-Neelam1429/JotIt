@@ -36,3 +36,13 @@ test('text and Markdown exports include quantity, note and completion but exclud
   assert.ok(jotAsMarkdown(jot).includes('\\*Milk\\*'));
   assert.ok(!jotAsText(jot).includes('hidden'));
 });
+
+test('PDF layout escapes titles and notes and leaves private organization and history out', async () => {
+  const { jotAsHtml } = await import('../src/lib/jot-format.ts');
+  const html = jotAsHtml({ ...emptyContent(), title: '<img src=x>', folder: 'private folder', tags: ['secret'],
+    entries: [{ id: 'a', text: 'Milk', note: '<script>x</script>', completed: false, createdAt: 1 }] });
+  assert.ok(html.includes('&lt;img src=x&gt;'));
+  assert.ok(html.includes('&lt;script&gt;'));
+  assert.ok(!html.includes('private folder'));
+  assert.ok(!html.includes('secret'));
+});

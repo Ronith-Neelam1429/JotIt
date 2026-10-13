@@ -1,4 +1,4 @@
-import { jotAsMarkdown, jotAsText } from '@/lib/jot-format';
+import { jotAsHtml, jotAsMarkdown, jotAsText } from '@/lib/jot-format';
 import type { Jot } from '@/lib/jot-model';
 
 export async function shareJotCopy(jot: Jot) {
@@ -6,7 +6,16 @@ export async function shareJotCopy(jot: Jot) {
   try { await navigator.share({ title: jot.title, text: jotAsText(jot) }); }
   catch (error) { if (!(error instanceof Error && error.name === 'AbortError')) throw error; }
 }
-export async function exportJot(jot: Jot, format: 'txt' | 'md') {
+export async function exportJot(jot: Jot, format: 'txt' | 'md' | 'pdf') {
+  if (format === 'pdf') {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) throw new Error('Allow pop-ups to print or save your PDF.');
+    printWindow.document.write(jotAsHtml(jot));
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    return;
+  }
   const content = format === 'txt' ? jotAsText(jot) : jotAsMarkdown(jot);
   const uri = URL.createObjectURL(new Blob([content], { type: format === 'txt' ? 'text/plain;charset=utf-8' : 'text/markdown;charset=utf-8' }));
   const anchor = document.createElement('a');

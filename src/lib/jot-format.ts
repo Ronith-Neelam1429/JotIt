@@ -120,3 +120,13 @@ export function documentHtml(source: string) {
     return `<${tag} style="margin-left:${(block.indent ?? 0) * 16}px">${prefix ? `${prefix} ` : ''}${html}</${tag}>`;
   }).join('\n');
 }
+
+export function jotAsHtml(jot: JotContent) {
+  const body = jot.kind === 'document' ? documentHtml(jot.documentContent) : jot.entries.map((entry) =>
+    `<div class="item"><span class="check">${entry.completed ? '☑' : '☐'}</span><div><p class="${entry.completed ? 'complete' : ''}">${escapeHtml(entry.text)}${entry.quantity ? ` <span class="quantity">${escapeHtml(entry.quantity)}</span>` : ''}</p>${entry.note ? `<p class="note">${escapeHtml(entry.note).replace(/\n/g, '<br>')}</p>` : ''}</div></div>`).join('');
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(jot.title)}</title>
+<style>
+@page { margin: 44pt; } * { box-sizing: border-box; } body { font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif; color: #203029; font-size: 12pt; line-height: 1.6; overflow-wrap: anywhere; }
+header { border-bottom: 2px solid #25634D; margin-bottom: 24pt; padding-bottom: 18pt; } .brand { color: #25634D; font-size: 10pt; letter-spacing: 2pt; font-weight: 700; } h1 { font-size: 27pt; line-height: 1.2; } header h1 { margin: 10pt 0 0; } h2 { font-size: 20pt; } h3 { font-size: 16pt; } h1,h2,h3 { break-after: avoid; } p { margin: 0 0 10pt; } .item { display: flex; gap: 12pt; padding: 10pt 0; border-bottom: 1px solid #e4e8e3; break-inside: avoid; } .item p { margin: 0; white-space: pre-wrap; } .check { color: #25634D; font-size: 16pt; } .quantity { margin-left: 8pt; font-size: 10pt; color: #25634D; } .note { color: #67776e; font-size: 10pt; } .complete { color: #748179; text-decoration: line-through; } mark { background: #F7DE81; } a { color: #25634D; } footer { margin-top: 28pt; padding-top: 10pt; border-top: 1px solid #e4e8e3; color: #748179; font-size: 9pt; }
+</style></head><body><header><div class="brand">JOTIT</div><h1>${escapeHtml(jot.title)}</h1></header><main>${body || '<p>This jot is empty.</p>'}</main><footer>A copy from JotIt</footer></body></html>`;
+}
