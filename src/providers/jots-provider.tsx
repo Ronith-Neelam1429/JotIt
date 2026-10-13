@@ -9,6 +9,7 @@ import { useAuth } from '@/providers/auth-provider';
 export type { Jot, JotEntry, JotKind } from '@/lib/jot-model';
 
 type JotsContextValue = {
+  updateAppearance: (id: string, accent: string, emoji: string) => void;
   addEntry: (jotId: string, text: string) => void;
   changeJotKind: (jotId: string, kind: JotKind) => Promise<void>;
   createJot: (title: string, kind: JotKind) => Jot;
@@ -162,6 +163,9 @@ export function JotsProvider({ children }: PropsWithChildren) {
     scheduleSave(jot);
     return jot;
   }
+  function updateAppearance(id: string, accent: string, emoji: string) {
+    edit(id, (jot) => ({ ...jot, accent, emoji }));
+  }
   function addEntry(id: string, text: string) {
     if (!text.trim()) return;
     edit(id, (jot) => ({ ...jot, entries: [...jot.entries,
@@ -225,7 +229,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
       throw error;
     }
   }
-  return <JotsContext.Provider value={{ addEntry, changeJotKind, createJot, deleteJotPermanently,
+  return <JotsContext.Provider value={{ updateAppearance, addEntry, changeJotKind, createJot, deleteJotPermanently,
     isLoading, isSaving, jots: jots.filter((jot) => jot.trashedAt === null), removeEntry, renameEntry,
     renameJot, reorderEntries, restoreJot, retrySync, syncError, toggleEntry, trashJots,
     trashedJots: jots.filter((jot) => jot.trashedAt !== null), updateDocument }}>{children}</JotsContext.Provider>;

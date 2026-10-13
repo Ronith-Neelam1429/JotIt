@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { JotTools } from '@/components/jot-tools';
 import { JotEntryRow } from '@/components/jot-entry-row';
 import { type JotKind, useJots } from '@/providers/jots-provider';
 
@@ -140,86 +141,6 @@ function RenameJotModal({
           </View>
         </View>
       </KeyboardAvoidingView>
-    </Modal>
-  );
-}
-
-type JotOptionsModalProps = {
-  kind: JotKind;
-  onChangeKind: () => void;
-  onClose: () => void;
-  onRename: () => void;
-  onTrash: () => void;
-  visible: boolean;
-};
-
-function JotOptionsModal({
-  kind,
-  onChangeKind,
-  onClose,
-  onRename,
-  onTrash,
-  visible,
-}: JotOptionsModalProps) {
-  return (
-    <Modal
-      animationType="fade"
-      onRequestClose={onClose}
-      presentationStyle="overFullScreen"
-      transparent
-      visible={visible}>
-      <View style={styles.optionsBackdrop}>
-        <SafeAreaView accessibilityViewIsModal edges={['bottom']} style={styles.optionsCard}>
-          <View style={styles.optionsHandle} />
-          <Text accessibilityRole="header" style={styles.optionsHeading}>Jot options</Text>
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={onRename}
-            style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}>
-            <View style={styles.optionIcon}><Text style={styles.optionIconText}>✎</Text></View>
-            <View style={styles.optionCopy}>
-              <Text style={styles.optionTitle}>Rename</Text>
-              <Text style={styles.optionDescription}>Change the name of this jot</Text>
-            </View>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={onChangeKind}
-            style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}>
-            <View style={styles.optionIcon}>
-              <Text style={styles.optionIconText}>{kind === 'list' ? 'Aa' : '☷'}</Text>
-            </View>
-            <View style={styles.optionCopy}>
-              <Text style={styles.optionTitle}>
-                Switch to {kind === 'list' ? 'free write' : 'list'}
-              </Text>
-              <Text style={styles.optionDescription}>Keep the current content as you switch</Text>
-            </View>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={onTrash}
-            style={({ pressed }) => [styles.optionRow, pressed && styles.optionRowPressed]}>
-            <View style={[styles.optionIcon, styles.optionIconDanger]}>
-              <Text style={styles.optionIconDangerText}>♲</Text>
-            </View>
-            <View style={styles.optionCopy}>
-              <Text style={styles.optionDangerTitle}>Move to Trash</Text>
-              <Text style={styles.optionDescription}>Keep it recoverable for 30 days</Text>
-            </View>
-          </Pressable>
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={onClose}
-            style={({ pressed }) => [styles.optionsCancelButton, pressed && styles.pressed]}>
-            <Text style={styles.optionsCancelLabel}>Cancel</Text>
-          </Pressable>
-        </SafeAreaView>
-      </View>
     </Modal>
   );
 }
@@ -379,8 +300,8 @@ export default function JotScreen() {
     />
   );
   const optionsModal = (
-    <JotOptionsModal
-      kind={jot.kind}
+    <JotTools
+      jot={jot}
       onChangeKind={confirmJotKindChange}
       onClose={() => setIsOptionsOpen(false)}
       onRename={() => {
@@ -453,6 +374,7 @@ export default function JotScreen() {
         />
 
         <DraggableFlatList
+          containerStyle={styles.list}
           contentContainerStyle={styles.content}
           data={jot.entries}
           ItemSeparatorComponent={() => <View style={styles.entrySeparator} />}
@@ -501,6 +423,7 @@ export default function JotScreen() {
             </ScaleDecorator>
           )}
           showsVerticalScrollIndicator={false}
+          style={styles.list}
         />
 
         <View style={styles.composer}>
@@ -538,6 +461,7 @@ export default function JotScreen() {
 const styles = StyleSheet.create({
   screen: { backgroundColor: '#F6F5EF', flex: 1 },
   keyboardView: { flex: 1 },
+  list: { flex: 1 },
   header: {
     alignItems: 'center',
     borderBottomColor: '#E7E4DC',
