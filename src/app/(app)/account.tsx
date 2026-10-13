@@ -25,7 +25,8 @@ import { useJots } from '@/providers/jots-provider';
 
 export default function AccountScreen() {
   const { refreshUser, user } = useAuth();
-  const { trashedJots } = useJots();
+  const { jots, trashedJots } = useJots();
+  const archivedJots = jots.filter((jot) => jot.archivedAt && !jot.isTemplate);
   const [displayName, setDisplayName] = useState(user?.displayName ?? '');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -268,14 +269,32 @@ export default function AccountScreen() {
           <Text style={styles.sectionTitle}>Storage</Text>
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.push('/trash')}
-            style={({ pressed }) => [styles.trashRow, pressed && styles.pressed]}>
-            <View style={styles.trashIcon}>
-              <Text style={styles.trashIconText}>♲</Text>
+            onPress={() => router.push('/archive')}
+            style={({ pressed }) => [styles.storageRow, pressed && styles.pressed]}>
+            <View style={styles.storageIcon}>
+              <Text style={styles.storageIconText}>▣</Text>
             </View>
             <View style={styles.detailText}>
-              <Text style={styles.trashTitle}>Trash</Text>
-              <Text style={styles.trashDescription}>
+              <Text style={styles.storageTitle}>Archive</Text>
+              <Text style={styles.storageDescription}>
+                {archivedJots.length
+                  ? `${archivedJots.length} ${archivedJots.length === 1 ? 'jot' : 'jots'} tucked away`
+                  : 'Keep jots out of sight without deleting them'}
+              </Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </Pressable>
+          <View style={styles.separator} />
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/trash')}
+            style={({ pressed }) => [styles.storageRow, pressed && styles.pressed]}>
+            <View style={styles.storageIcon}>
+              <Text style={styles.storageIconText}>♲</Text>
+            </View>
+            <View style={styles.detailText}>
+              <Text style={styles.storageTitle}>Trash</Text>
+              <Text style={styles.storageDescription}>
                 {trashedJots.length
                   ? `${trashedJots.length} ${trashedJots.length === 1 ? 'jot' : 'jots'} waiting for deletion`
                   : 'Restore or permanently delete jots'}
@@ -370,8 +389,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   inlineButtonLabel: { color: '#25634D', fontSize: 14, fontWeight: '700' },
-  trashRow: { alignItems: 'center', flexDirection: 'row', gap: 13 },
-  trashIcon: {
+  storageRow: { alignItems: 'center', flexDirection: 'row', gap: 13 },
+  storageIcon: {
     alignItems: 'center',
     backgroundColor: '#F1EEE7',
     borderRadius: 13,
@@ -379,9 +398,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 46,
   },
-  trashIconText: { color: '#53635B', fontSize: 24 },
-  trashTitle: { color: '#182B24', fontSize: 16, fontWeight: '700' },
-  trashDescription: { color: '#78847D', fontSize: 12, lineHeight: 17 },
+  storageIconText: { color: '#53635B', fontSize: 24 },
+  storageTitle: { color: '#182B24', fontSize: 16, fontWeight: '700' },
+  storageDescription: { color: '#78847D', fontSize: 12, lineHeight: 17 },
   chevron: { color: '#839087', fontSize: 28, fontWeight: '300' },
   logoutButton: {
     alignItems: 'center',

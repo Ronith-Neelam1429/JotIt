@@ -17,7 +17,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { plainDocument } from '@/lib/jot-format';
-import { matchesSearch, searchPreview, relativeDate, sortJots, type JotSort } from '@/lib/jot-model';
+import { contentOf, createId, matchesSearch, normalizeTags, searchPreview, relativeDate, sortJots, type JotContent, type JotSort } from '@/lib/jot-model';
+import { STARTER_TEMPLATES } from '@/lib/jot-templates';
 import { Button, Sheet, ui } from '@/components/jot-controls';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import { useAuth } from '@/providers/auth-provider';
@@ -57,17 +58,57 @@ export default function HomeScreen() {
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
   const [jotTitle, setJotTitle] = useState('');
+  const [jotFolder, setJotFolder] = useState('');
+  const [jotTags, setJotTags] = useState('');
   const [selectedJotIds, setSelectedJotIds] = useState<Set<string>>(new Set());
   const [selectedKind, setSelectedKind] = useState<JotKind | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const personalTemplates = useMemo(() => allJots.filter((jot) => jot.isTemplate), [allJots]);
+  const existingFolders = useMemo(() => [...new Set(allJots.map((jot) => jot.folder).filter(Boolean))].sort(), [allJots]);
+  const existingTags = useMemo(() => [...new Set(allJots.flatMap((jot) => jot.tags))].sort(), [allJots]);
 
   function closeComposer() {
     setIsComposerOpen(false);
     setJotTitle('');
+    setJotFolder('');
+    setJotTags('');
     setSelectedKind(null);
+    setSelectedTemplateId(null);
   }
 
-  function createAndOpenJot(kind: JotKind, title = jotTitle.trim() || 'Untitled') {
-    const jot = createStoredJot(title, kind);
+  function chooseTemplate(templateId: string, title: string, kind: JotKind) {
+    setSelectedTemplateId(templateId);
+    setSelectedKind(kind);
+    setJotTitle(title);
+  }
+
+  function createAndOpenJot(kind: JotKind, templateId: string | null = selectedTemplateId) {
+    const starter = templateId?.startsWith('starter:')
+      ? STARTER_TEMPLATES.find((template) => `starter:${template.id}` === templateId)
+      : undefined;
+    const personal = templateId?.startsWith('personal:')
+      ? personalTemplates.find((template) => `personal:${template.id}` === templateId)
+      : undefined;
+    const templateContent: Partial<JotContent> = starter?.content ?? (personal ? contentOf(personal) : {});
+    const title = jotTitle.trim() || starter?.title || personal?.title || 'Untitled';
+    const entries = (templateContent.entries ?? []).map((entry) => ({
+      ...entry,
+      completed: false,
+      createdAt: Date.now(),
+      id: createId(),
+    }));
+    const jot = createStoredJot(title, kind, {
+      ...templateContent,
+      archivedAt: null,
+      deletedEntries: [],
+      entries,
+      folder: jotFolder.trim().slice(0, 50),
+      isTemplate: false,
+      kind,
+      pinned: false,
+      tags: normalizeTags(jotTags.split(/[,#\n]/)),
+      title,
+    });
     closeComposer();
     router.push({ pathname: '/jot/[jotId]', params: { jotId: jot.id } });
   }
@@ -139,13 +180,6 @@ export default function HomeScreen() {
           </Link>
         </View>
 
-        <View style={[ui.row, { marginBottom: 14 }]}>
-          <Button label={`Archive · ${allJots.filter((jot) => jot.archivedAt).length}`} onPress={() => router.push('/archive')} />
-          <Button label={folder === '' ? 'Unfiled' : [folder, tag ? `#${tag}` : null].filter(Boolean).join(' · ') || 'Folders & tags'} selected={folder !== null || tag !== null} onPress={() => setFiltersOpen(true)} />
-          <Button label="Templates" onPress={() => router.push('/templates')} />
-          <Button label="Trash" onPress={() => router.push('/trash')} />
-        </View>
-
         <View style={styles.searchBox}>
           <Text style={styles.searchIcon}>⌕</Text>
           <TextInput accessibilityLabel="Search jots and their contents" placeholder="Search jots, items, notes…"
@@ -156,6 +190,8 @@ export default function HomeScreen() {
         {search ? <View style={ui.row}><Button label={includeArchive ? 'Including archive' : 'Include archive'}
           selected={includeArchive} onPress={() => setIncludeArchive(!includeArchive)} /></View> : null}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={ui.row} style={{ marginTop: 10 }}>
+          <Button label={folder === '' ? 'Unfiled' : [folder, tag ? `#${tag}` : null].filter(Boolean).join(' · ') || 'Filters'}
+            selected={folder !== null || tag !== null} onPress={() => setFiltersOpen(true)} />
           {(['updated', 'created', 'title'] as const).map((value) => <Button key={value}
             label={{ updated: 'Recently updated', created: 'Date created', title: 'Title A–Z' }[value]}
             selected={sort === value} onPress={() => setSort(value)} />)}
@@ -318,7 +354,7 @@ export default function HomeScreen() {
           <Button label="All tags" selected={tag === null} onPress={() => setTag(null)} />
           {[...new Set(allJots.flatMap((jot) => jot.tags))].sort().map((name) => <Button key={name} label={`#${name}`} selected={tag === name} onPress={() => setTag(name)} />)}
         </View><Button label="Reset filters" onPress={() => { setFolder(null); setTag(null); }} />
-        <Text style={ui.description}>Add folders and tags from any jot’s options.</Text>
+        <Text style={ui.description}>Add folders and tags while creating a jot or from an existing jot’s options.</Text>
       </Sheet>
       <Modal
         animationType="slide"
@@ -345,13 +381,52 @@ export default function HomeScreen() {
               showsVerticalScrollIndicator={false}>
               <Text style={styles.composerPrompt}>Create a new jot</Text>
               <Text style={styles.composerHint}>
-                Give it a name if you want, then choose how you’ll use it.
+                Start blank or use a template, then organize it before you begin.
               </Text>
 
-              <Button label="Start from a template →" onPress={() => { closeComposer(); router.push('/templates'); }} />
+              <View style={styles.fieldHeadingRow}>
+                <Text style={styles.fieldLabel}>Template (optional)</Text>
+                <Pressable accessibilityRole="button" onPress={() => { closeComposer(); router.push('/templates'); }}
+                  style={({ pressed }) => pressed && styles.pressed}>
+                  <Text style={styles.manageTemplatesLabel}>Manage templates</Text>
+                </Pressable>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled"
+                contentContainerStyle={styles.templateList}>
+                <Pressable accessibilityRole="radio" accessibilityState={{ selected: selectedTemplateId === null }}
+                  onPress={() => { setSelectedTemplateId(null); setSelectedKind(null); setJotTitle(''); }}
+                  style={({ pressed }) => [styles.templateCard, selectedTemplateId === null && styles.templateCardSelected, pressed && styles.formatCardPressed]}>
+                  <View style={styles.blankTemplateIcon}><Text style={styles.blankTemplateMark}>＋</Text></View>
+                  <View style={styles.formatCopy}><Text style={styles.formatTitle}>Blank jot</Text>
+                    <Text numberOfLines={2} style={styles.formatDescription}>Choose a list or free-write format below.</Text></View>
+                  <View style={[styles.radio, selectedTemplateId === null && styles.radioSelected]}>
+                    {selectedTemplateId === null ? <View style={styles.radioDot} /> : null}
+                  </View>
+                </Pressable>
+                {[...STARTER_TEMPLATES.map((template) => ({
+                  id: `starter:${template.id}`, title: template.title, description: template.description,
+                  emoji: template.content.emoji, kind: template.content.kind,
+                })), ...personalTemplates.map((template) => ({
+                  id: `personal:${template.id}`, title: template.title,
+                  description: template.kind === 'list' ? `${template.entries.length} reusable items` : 'Your reusable free-write layout',
+                  emoji: template.emoji, kind: template.kind,
+                }))].map((template) => (
+                  <Pressable key={template.id} accessibilityRole="radio"
+                    accessibilityState={{ selected: selectedTemplateId === template.id }}
+                    onPress={() => chooseTemplate(template.id, template.title, template.kind)}
+                    style={({ pressed }) => [styles.templateCard, selectedTemplateId === template.id && styles.templateCardSelected, pressed && styles.formatCardPressed]}>
+                    <View style={styles.templateIcon}><Text style={styles.templateEmoji}>{template.emoji}</Text></View>
+                    <View style={styles.formatCopy}><Text numberOfLines={1} style={styles.formatTitle}>{template.title}</Text>
+                      <Text numberOfLines={2} style={styles.formatDescription}>{template.description}</Text></View>
+                    <View style={[styles.radio, selectedTemplateId === template.id && styles.radioSelected]}>
+                      {selectedTemplateId === template.id ? <View style={styles.radioDot} /> : null}
+                    </View>
+                  </Pressable>
+                ))}
+              </ScrollView>
+
               <Text style={styles.fieldLabel}>Name (optional)</Text>
               <TextInput
-                autoFocus
                 maxLength={50}
                 onChangeText={setJotTitle}
                 placeholder="Groceries, trip ideas, meeting notes…"
@@ -362,12 +437,40 @@ export default function HomeScreen() {
                 value={jotTitle}
               />
 
-              <Text style={styles.fieldLabel}>Format</Text>
-              <View style={styles.formatList}>
+              <Text style={styles.fieldLabel}>Folder (optional)</Text>
+              <TextInput accessibilityLabel="Folder" autoCapitalize="words" maxLength={50}
+                onChangeText={setJotFolder} placeholder="Personal, Work, Recipes…" placeholderTextColor="#89938D"
+                returnKeyType="next" selectionColor="#25634D" style={styles.composerInput} value={jotFolder} />
+              {existingFolders.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                contentContainerStyle={ui.row} keyboardShouldPersistTaps="handled">
+                {existingFolders.map((name) => <Button key={name} label={name} selected={jotFolder === name}
+                  onPress={() => setJotFolder(jotFolder === name ? '' : name)} />)}
+              </ScrollView> : null}
+
+              <Text style={styles.fieldLabel}>Tags (optional)</Text>
+              <TextInput accessibilityLabel="Tags" autoCapitalize="none" maxLength={250}
+                onChangeText={setJotTags} placeholder="home, errands, ideas" placeholderTextColor="#89938D"
+                returnKeyType="done" selectionColor="#25634D" style={styles.composerInput} value={jotTags} />
+              <Text style={styles.fieldHelp}>Separate tags with commas.</Text>
+              {existingTags.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                contentContainerStyle={ui.row} keyboardShouldPersistTaps="handled">
+                {existingTags.map((name) => {
+                  const tags = normalizeTags(jotTags.split(/[,#\n]/));
+                  const selected = tags.includes(name);
+                  return <Button key={name} label={`#${name}`} selected={selected} onPress={() => {
+                    const next = selected ? tags.filter((tagName) => tagName !== name) : [...tags, name];
+                    setJotTags(next.join(', '));
+                  }} />;
+                })}
+              </ScrollView> : null}
+
+              {selectedTemplateId === null ? <>
+                <Text style={styles.fieldLabel}>Format</Text>
+                <View style={styles.formatList}>
                 <Pressable
                   accessibilityRole="radio"
                   accessibilityState={{ selected: selectedKind === 'list' }}
-                  onPress={() => setSelectedKind('list')}
+                  onPress={() => { setSelectedKind('list'); setSelectedTemplateId(null); }}
                   style={({ pressed }) => [
                     styles.formatCard,
                     selectedKind === 'list' && styles.formatCardSelected,
@@ -390,7 +493,7 @@ export default function HomeScreen() {
                 <Pressable
                   accessibilityRole="radio"
                   accessibilityState={{ selected: selectedKind === 'document' }}
-                  onPress={() => setSelectedKind('document')}
+                  onPress={() => { setSelectedKind('document'); setSelectedTemplateId(null); }}
                   style={({ pressed }) => [
                     styles.formatCard,
                     selectedKind === 'document' && styles.formatCardSelected,
@@ -409,7 +512,10 @@ export default function HomeScreen() {
                     {selectedKind === 'document' ? <View style={styles.radioDot} /> : null}
                   </View>
                 </Pressable>
-              </View>
+                </View>
+              </> : <Text style={styles.templateFormatNote}>
+                This template will create a {selectedKind === 'list' ? 'list' : 'free-write'} jot.
+              </Text>}
 
               <Pressable
                 accessibilityRole="button"
@@ -425,7 +531,7 @@ export default function HomeScreen() {
 
               <Pressable
                 accessibilityRole="button"
-                onPress={() => createAndOpenJot('document')}
+                onPress={() => createAndOpenJot('document', null)}
                 style={({ pressed }) => [styles.skipButton, pressed && styles.pressed]}>
                 <Text style={styles.skipButtonLabel}>Skip</Text>
               </Pressable>
@@ -676,6 +782,9 @@ const styles = StyleSheet.create({
   composerPrompt: { color: '#17231E', fontSize: 31, fontWeight: '700', letterSpacing: -1 },
   composerHint: { color: '#68766F', fontSize: 15, lineHeight: 22 },
   fieldLabel: { color: '#52625A', fontSize: 13, fontWeight: '700', marginTop: 4 },
+  fieldHeadingRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
+  fieldHelp: { color: '#78847D', fontSize: 12, marginTop: -8 },
+  manageTemplatesLabel: { color: '#25634D', fontSize: 13, fontWeight: '700', paddingVertical: 8 },
   composerInput: {
     backgroundColor: '#FFFFFF',
     borderColor: '#DBD9D1',
@@ -708,6 +817,25 @@ const styles = StyleSheet.create({
   },
   formatCardSelected: { borderColor: '#25634D', borderWidth: 2, padding: 14 },
   formatCardPressed: { opacity: 0.68, transform: [{ scale: 0.99 }] },
+  templateCard: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#E1DED6',
+    borderRadius: 17,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 88,
+    padding: 13,
+    width: 274,
+  },
+  templateCardSelected: { backgroundColor: '#F0F6F3', borderColor: '#25634D', borderWidth: 2, padding: 12 },
+  templateFormatNote: { backgroundColor: '#E8F0EC', borderRadius: 13, color: '#35614F', fontSize: 13, lineHeight: 19, padding: 12 },
+  templateList: { gap: 10, paddingRight: 8 },
+  templateIcon: { alignItems: 'center', backgroundColor: '#EDF1EE', borderRadius: 13, height: 46, justifyContent: 'center', width: 46 },
+  templateEmoji: { fontSize: 22 },
+  blankTemplateIcon: { alignItems: 'center', backgroundColor: '#E4EEE8', borderRadius: 13, height: 46, justifyContent: 'center', width: 46 },
+  blankTemplateMark: { color: '#25634D', fontSize: 28, fontWeight: '300', lineHeight: 30 },
   formatIcon: {
     alignItems: 'center',
     borderRadius: 15,

@@ -10,7 +10,7 @@ export default function ArchiveScreen() {
   return <SafeAreaView style={styles.screen}>
     <FlatList data={archived} keyExtractor={(jot) => jot.id} contentContainerStyle={styles.content}
       ListHeaderComponent={<View style={styles.header}>
-        <View style={ui.row}><Button label="‹ Your jots" onPress={() => router.replace('/')} /></View>
+        <View style={ui.row}><Button label="‹ Account" onPress={() => router.back()} /></View>
         <Text accessibilityRole="header" style={styles.title}>A little breathing room.</Text>
         <Text style={ui.description}>Your archive keeps jots for as long as you need. Open one to edit it, or bring it back home.</Text>
         {syncError ? <><Text style={ui.danger}>{syncError}</Text><Button label="Retry sync" onPress={retrySync} /></> : null}
