@@ -163,6 +163,7 @@ export default function HomeScreen() {
         <View style={ui.row}>
           <Button label={`Archive · ${allJots.filter((jot) => jot.archivedAt).length}`} onPress={() => router.push('/archive')} />
           <Button label={folder || (tag ? `#${tag}` : 'Folders & tags')} selected={folder !== null || tag !== null} onPress={() => setFiltersOpen(true)} />
+          <Button label="Templates" onPress={() => router.push('/templates')} />
           <Button label="Trash" onPress={() => router.push('/trash')} />
         </View>
 
@@ -378,6 +379,7 @@ export default function HomeScreen() {
                 Give it a name if you want, then choose how you’ll use it.
               </Text>
 
+              <Button label="Start from a template →" onPress={() => { closeComposer(); router.push('/templates'); }} />
               <Text style={styles.fieldLabel}>Name (optional)</Text>
               <TextInput
                 autoFocus

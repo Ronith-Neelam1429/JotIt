@@ -20,10 +20,13 @@ export function JotTools({ jot, visible, onClose, onRename, onChangeKind, onTras
       <ActionRow icon="#" title="Tags & folder" description={[jot.folder, ...jot.tags.map((tag) => `#${tag}`)].filter(Boolean).join(' · ') || 'Give everything a place'} onPress={() => {
         setFolderDraft(jot.folder); setTagsDraft(jot.tags.join(', ')); open('organize');
       }} />
+      {!jot.isTemplate ? <ActionRow icon="▤" title="Save as template" description="Reuse this structure with a fresh checklist" onPress={() => {
+        duplicateJot(jot.id, true); onClose(); router.push('/templates');
+      }} /> : null}
       <ActionRow icon="★" title={jot.pinned ? 'Unpin jot' : 'Pin jot'} description="Keep it at the top of your jots" onPress={() => { pinJot(jot.id, !jot.pinned); onClose(); }} />
-      <ActionRow icon="▣" title={jot.archivedAt ? 'Move to your jots' : 'Archive jot'} description="Keep it safely, out of the way" onPress={() => {
+      {!jot.isTemplate ? <ActionRow icon="▣" title={jot.archivedAt ? 'Move to your jots' : 'Archive jot'} description="Keep it safely, out of the way" onPress={() => {
         archiveJot(jot.id, !jot.archivedAt); onClose(); router.replace(jot.archivedAt ? '/' : '/archive');
-      }} />
+      }} /> : null}
       <ActionRow icon="⧉" title="Duplicate jot" description="Make an independent copy" onPress={() => {
         const copy = duplicateJot(jot.id); onClose(); router.push({ pathname: '/jot/[jotId]', params: { jotId: copy.id } });
       }} />

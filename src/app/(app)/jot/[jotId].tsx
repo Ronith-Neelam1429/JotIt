@@ -338,7 +338,7 @@ export default function JotScreen() {
               <Text accessibilityRole="header" style={styles.documentTitle}>{jot.title}</Text>
             </Pressable>
             <Text style={styles.documentMeta}>
-              Free write · {wordCount} {wordCount === 1 ? 'word' : 'words'}
+              {jot.isTemplate ? 'Template · ' : jot.archivedAt ? 'Archived · ' : ''}Free write · {wordCount} {wordCount === 1 ? 'word' : 'words'}
             </Text>
             <TextInput
               accessibilityLabel="Free write jot"
@@ -403,7 +403,7 @@ export default function JotScreen() {
                 <Text accessibilityRole="header" style={styles.title}>{jot.title}</Text>
               </Pressable>
               <Text style={styles.summary}>
-                {jot.entries.length
+                {jot.isTemplate ? 'Template · ' : jot.archivedAt ? 'Archived · ' : ''}{jot.entries.length
                   ? `${completedCount} of ${jot.entries.length} completed`
                   : 'Ready for your first entry'}
               </Text>
