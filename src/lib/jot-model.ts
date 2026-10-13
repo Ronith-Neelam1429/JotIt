@@ -108,3 +108,19 @@ export function restoreEntry(jot: Jot, id: string): Jot {
   if (!entries.some((item) => item.id === id)) entries.splice(Math.min(position, entries.length), 0, restored);
   return { ...jot, entries, deletedEntries: jot.deletedEntries.filter((item) => item.id !== id) };
 }
+
+export type JotSort = 'updated' | 'created' | 'title';
+export function sortJots(jots: Jot[], sort: JotSort): Jot[] {
+  return [...jots].sort((a, b) => Number(b.pinned) - Number(a.pinned)
+    || (sort === 'title' ? a.title.localeCompare(b.title, undefined, { sensitivity: 'base', numeric: true })
+      : sort === 'created' ? b.createdAt - a.createdAt : b.updatedAt - a.updatedAt)
+    || a.id.localeCompare(b.id));
+}
+export function relativeDate(timestamp: number, now = Date.now()) {
+  const minutes = Math.max(0, Math.floor((now - timestamp) / 60000));
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}h ago`;
+  if (minutes < 10080) return `${Math.floor(minutes / 1440)}d ago`;
+  return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}

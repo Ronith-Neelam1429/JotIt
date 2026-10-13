@@ -26,3 +26,14 @@ test('bulk deletion and individual restoration preserve item details and positio
   assert.equal(restored.deletedEntries.length, 0);
   assert.deepEqual(restoreEntry(restored, 'a'), restored);
 });
+
+test('sorting keeps pins first and respects each date and title mode', async () => {
+  const { sortJots } = await import('../src/lib/jot-model.ts');
+  const jots = [{ id: 'a', title: 'Z', createdAt: 1, updatedAt: 3, pinned: false },
+    { id: 'b', title: 'A', createdAt: 2, updatedAt: 1, pinned: false },
+    { id: 'c', title: 'Pinned', createdAt: 0, updatedAt: 0, pinned: true }];
+  assert.deepEqual(sortJots(jots, 'updated').map((j) => j.id), ['c', 'a', 'b']);
+  assert.deepEqual(sortJots(jots, 'created').map((j) => j.id), ['c', 'b', 'a']);
+  assert.deepEqual(sortJots(jots, 'title').map((j) => j.id), ['c', 'b', 'a']);
+  assert.equal(jots[0].id, 'a');
+});

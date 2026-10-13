@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { relativeDate, sortJots, type JotSort } from '@/lib/jot-model';
 import { Button, ui } from '@/components/jot-controls';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import { useAuth } from '@/providers/auth-provider';
@@ -49,7 +50,8 @@ function getJotMeta(jot: Jot) {
 export default function HomeScreen() {
   const { user } = useAuth();
   const { createJot: createStoredJot, isLoading, jots: allJots, syncError, trashJots } = useJots();
-  const jots = allJots.filter((jot) => !jot.archivedAt && !jot.isTemplate);
+  const [sort, setSort] = useState<JotSort>('updated');
+  const jots = useMemo(() => sortJots(allJots.filter((jot) => !jot.archivedAt && !jot.isTemplate), sort), [allJots, sort]);
   const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
   const [jotTitle, setJotTitle] = useState('');
@@ -157,6 +159,11 @@ export default function HomeScreen() {
           <Button label="Trash" onPress={() => router.push('/trash')} />
         </View>
 
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={ui.row}>
+          {(['updated', 'created', 'title'] as const).map((value) => <Button key={value}
+            label={{ updated: 'Recently updated', created: 'Date created', title: 'Title A–Z' }[value]}
+            selected={sort === value} onPress={() => setSort(value)} />)}
+        </ScrollView>
         {syncError ? (
           <View style={styles.syncError}>
             <Text style={styles.syncErrorTitle}>Couldn’t sync your jots</Text>
@@ -208,8 +215,8 @@ export default function HomeScreen() {
                   </View>
                   <View style={styles.jotCopy}>
                     <View style={styles.jotTitleRow}>
-                      <Text numberOfLines={1} style={styles.jotTitle}>{jot.title}</Text>
-                      <Text style={styles.updatedAt}>Just now</Text>
+                      <Text numberOfLines={1} style={styles.jotTitle}>{jot.pinned ? '★ ' : ''}{jot.title}</Text>
+                      <Text style={styles.updatedAt}>{relativeDate(sort === 'created' ? jot.createdAt : jot.updatedAt)}</Text>
                     </View>
                     <Text numberOfLines={1} style={styles.jotPreview}>
                       {getJotPreview(jot)}
