@@ -1,9 +1,12 @@
 import { createContext, type PropsWithChildren, useContext, useEffect, useRef, useState } from 'react';
 import { Alert, AppState } from 'react-native';
 
-import { permanentlyDeleteJot, prepareJotSave, saveJot, subscribeToJots } from '@/lib/firebase-jots';
+import { permanentlyDeleteJot, prepareJotSave, saveJot, saveSharedJot, subscribeToJots } from '@/lib/firebase-jots';
 import { ACCENTS, createId, deleteEntries, restoreEntry as restoreDeletedEntry, emptyContent, contentOf, normalizeTags, checkpoint, recordUndo, stepUndo, type UndoState, type JotContent, type Jot, type JotKind } from '@/lib/jot-model';
 import { getOrCreateJotEncryptionKey, type JotEncryptionKey } from '@/lib/jot-encryption';
+import { canEditJot } from '@/lib/collaboration-model';
+import { clearSharedKeys, forgetSharedKey } from '@/lib/collaboration-keys';
+import { mergeJotChanges } from '@/lib/jot-merge';
 import { dispatchJotSave } from '@/lib/jot-save-queue';
 import { useAuth } from '@/providers/auth-provider';
 
@@ -53,6 +56,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
   const [syncError, setSyncError] = useState<string | null>(null);
   const jotsRef = useRef<Jot[]>([]);
   const encryptionKeyRef = useRef<JotEncryptionKey | null>(null);
+  const dirtyBases = useRef(new Map<string, Jot>());
   const dirtyJots = useRef(new Map<string, Jot>());
   const saveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const saveChains = useRef(new Map<string, Promise<void>>());
@@ -73,6 +77,32 @@ export function JotsProvider({ children }: PropsWithChildren) {
     if (!key) return;
     const generation = session.current;
     const previous = saveChains.current.get(jot.id) ?? Promise.resolve();
+    if (jot.collaboration) {
+      const next = previous.catch(() => undefined).then(async () => {
+        if (generation !== session.current || !userId || deletingIds.current.has(jot.id)) return;
+        const target = dirtyJots.current.get(jot.id), base = dirtyBases.current.get(jot.id);
+        if (!target || !base) return;
+        const saved = await saveSharedJot(base, target, userId, key);
+        if (generation !== session.current) return;
+        const pending = dirtyJots.current.get(jot.id);
+        if (!pending) return; // Membership may have been revoked during the transaction.
+        let display = saved;
+        if (pending === target) { dirtyJots.current.delete(jot.id); dirtyBases.current.delete(jot.id); }
+        else {
+          display = mergeJotChanges(target, pending, saved);
+          dirtyJots.current.set(jot.id, display);
+          dirtyBases.current.set(jot.id, saved);
+        }
+        replaceJots(jotsRef.current.map((item) => item.id === jot.id ? display : item));
+        setIsSaving(dirtyJots.current.size > 0);
+        if (!dirtyJots.current.size) setSyncError(null);
+      });
+      saveChains.current.set(jot.id, next);
+      void next.catch((error) => { if (generation === session.current) reportSyncError(error); }).finally(() => {
+        if (saveChains.current.get(jot.id) === next) saveChains.current.delete(jot.id);
+      });
+      return;
+    }
     const next = dispatchJotSave(previous, async () => {
       if (generation !== session.current || deletingIds.current.has(jot.id)) return null;
       const commit = await prepareJotSave(jot, key);
@@ -110,6 +140,9 @@ export function JotsProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     const generation = ++session.current;
     dirtyJots.current.clear();
+    dirtyBases.current.clear();
+    clearSharedKeys();
+    undoStates.current.clear();
     saveChains.current.clear();
     deletingIds.current.clear();
     const timers = saveTimers.current;
@@ -125,11 +158,28 @@ export function JotsProvider({ children }: PropsWithChildren) {
       unsubscribe = subscribeToJots(userId, key, (remote) => {
         if (session.current !== generation) return;
         const merged = new Map(remote.filter((jot) => !deletingIds.current.has(jot.id)).map((jot) => [jot.id, jot]));
-        dirtyJots.current.forEach((jot, id) => merged.set(id, jot));
+        dirtyJots.current.forEach((jot, id) => {
+          const incoming = merged.get(id);
+          if (jot.collaboration && (!incoming || !canEditJot(incoming, userId))) {
+            dirtyJots.current.delete(id); dirtyBases.current.delete(id); undoStates.current.delete(id);
+            forgetSharedKey(userId, id);
+            const timer = saveTimers.current.get(id); if (timer) clearTimeout(timer);
+            saveTimers.current.delete(id);
+            setSyncError('Your access changed. Unsaved edits could not be sent to this jot.');
+            return;
+          }
+          const pending = incoming?.collaboration ? { ...jot, collaboration: incoming.collaboration, ownerId: incoming.ownerId, memberIds: incoming.memberIds } : jot;
+          // Preserve identity during ordinary snapshots so acknowledgements can clear the queue.
+          if (incoming?.collaboration && !jot.collaboration) {
+            dirtyBases.current.set(id, incoming); dirtyJots.current.set(id, pending);
+          }
+          merged.set(id, pending);
+        });
+        setIsSaving(dirtyJots.current.size > 0);
         // Decryption can finish after a write acknowledgement. Keep newer local data.
         jotsRef.current.forEach((jot) => {
           const incoming = merged.get(jot.id);
-          if (incoming && jot.updatedAt > incoming.updatedAt) merged.set(jot.id, jot);
+          if (!jot.collaboration && !incoming?.collaboration && incoming && jot.updatedAt > incoming.updatedAt) merged.set(jot.id, jot);
         });
         replaceJots([...merged.values()].sort((a, b) => b.updatedAt - a.updatedAt));
         setIsLoading(false);
@@ -139,7 +189,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
       unsubscribe?.();
       // Flush debounced edits using the current account's key before invalidating the session.
       pending.forEach((jot) => {
-        if (encryptionKeyRef.current) {
+        if (encryptionKeyRef.current && !jot.collaboration) {
           const key = encryptionKeyRef.current;
           void (chains.get(jot.id) ?? Promise.resolve()).catch(() => undefined)
             .then(() => saveJot(jot, key)).catch(console.error);
@@ -162,6 +212,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
   function edit(jotId: string, update: (jot: Jot) => Jot, delay = 0, record = true) {
     const current = jotsRef.current.find((jot) => jot.id === jotId);
     if (!current) return;
+    if (!canEditJot(current, userId)) { Alert.alert('View only', 'Ask the owner for editing access.'); return; }
     const changed = update(current);
     if (JSON.stringify(changed) === JSON.stringify(current)) return;
     if (new TextEncoder().encode(JSON.stringify(contentOf(changed))).length > 220000) {
@@ -170,6 +221,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
     }
     if (record) undoStates.current.set(jotId, recordUndo(undoStates.current.get(jotId), current, delay > 0, Date.now()));
     const next = { ...changed, versions: checkpoint(current, changed, delay > 0), updatedAt: Math.max(Date.now(), current.updatedAt + 1) };
+    if (current.collaboration && !dirtyBases.current.has(jotId)) dirtyBases.current.set(jotId, current);
     replaceJots(jotsRef.current.map((jot) => jot.id === jotId ? next : jot));
     scheduleSave(next, delay);
     return next;
@@ -271,14 +323,17 @@ export function JotsProvider({ children }: PropsWithChildren) {
     }));
   }
   async function trashJots(ids: string[]) {
+    if (ids.some((id) => jotsRef.current.find((jot) => jot.id === id)?.ownerId !== userId)) throw new Error('Only the owner can move a shared jot to Trash.');
     ids.forEach((id) => edit(id, (jot) => ({ ...jot, trashedAt: Date.now() })));
   }
   async function restoreJot(id: string) {
+    if (jotsRef.current.find((jot) => jot.id === id)?.ownerId !== userId) throw new Error('Only the owner can restore this jot.');
     edit(id, (jot) => ({ ...jot, trashedAt: null }));
   }
   async function deleteJotPermanently(id: string) {
     const previous = jotsRef.current.find((jot) => jot.id === id);
     if (!previous) return;
+    if (previous.ownerId !== userId) throw new Error('Only the owner can delete this jot.');
     deletingIds.current.add(id);
     const timer = saveTimers.current.get(id);
     if (timer) clearTimeout(timer);
