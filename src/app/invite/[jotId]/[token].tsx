@@ -9,7 +9,11 @@ import { useAuth } from '@/providers/auth-provider';
 import { usePendingInvitation } from '@/providers/invitation-provider';
 
 export default function InvitationScreen() {
-  const { jotId, token, key } = useLocalSearchParams<{ jotId: string; token: string; key: string }>();
+  const invitation = useLocalSearchParams<{ jotId: string; token: string; key: string }>();
+  return <InvitationContent key={`${invitation.jotId}:${invitation.token}:${invitation.key}`} invitation={invitation} />;
+}
+function InvitationContent({ invitation }: { invitation: { jotId: string; token: string; key: string } }) {
+  const { jotId, token, key } = invitation;
   const { user } = useAuth(), { setPending } = usePendingInvitation();
   const [preview, setPreview] = useState<Awaited<ReturnType<typeof previewInvitation>> | null>(null);
   const [name, setName] = useState(user?.displayName ?? '');
@@ -18,7 +22,6 @@ export default function InvitationScreen() {
   const valid = validInvitationParts(jotId, token, key);
   useEffect(() => {
     let active = true;
-    setPreview(null); setError('');
     if (valid && user) void previewInvitation(jotId, token, key)
       .then((value) => { if (active) setPreview(value); }).catch((e) => { if (active) setError(collaborationError(e)); });
     return () => { active = false; };
@@ -53,7 +56,7 @@ export default function InvitationScreen() {
           <Button label={busy ? 'Please wait…' : preview.alreadyMember ? 'Open jot' : 'Accept invitation'} disabled={busy} selected onPress={() => void respond(true)} />
           {!preview.alreadyMember ? <Button label="Decline" disabled={busy} onPress={() => void respond(false)} /> : null}
         </> : !error ? <ActivityIndicator color="#25634D" /> : null}
-      {error ? <><Text accessibilityLiveRegion="polite" style={ui.danger}>{error}</Text><Button label="Try again" disabled={busy} onPress={() => setAttempt(attempt + 1)} /></> : null}
+      {error ? <><Text accessibilityLiveRegion="polite" style={ui.danger}>{error}</Text><Button label="Try again" disabled={busy} onPress={() => { setError(''); setPreview(null); setAttempt(attempt + 1); }} /></> : null}
       {!declined ? <Button label="Not now" disabled={busy} onPress={() => router.replace('/')} /> : null}
     </View>
   </ScrollView></SafeAreaView>;

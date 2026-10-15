@@ -40,13 +40,13 @@ function RootNavigator() {
     <>
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="invite/[jotId]/[token]" />
         <Stack.Protected guard={Boolean(user)}>
           <Stack.Screen name="(app)" />
         </Stack.Protected>
         <Stack.Protected guard={!user}>
           <Stack.Screen name="(auth)" />
         </Stack.Protected>
+        <Stack.Screen name="invite/[jotId]/[token]" />
       </Stack>
     </>
   );
