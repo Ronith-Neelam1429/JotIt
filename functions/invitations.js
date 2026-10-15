@@ -16,7 +16,7 @@ export async function invitationAction(db, ref, uid, data) {
       tx.update(ref, { linkEpoch: epoch, lastInviteAt: now });
       tx.set(ref.collection('invitations').doc(id), { role: permission, encryptedPreview, epoch,
         createdBy: uid, createdAt: now, expiresAt: now + 7 * 86400000, active: true });
-      return { token, id, expiresAt: now + 7 * 86400000 };
+      return { token, id, epoch, expiresAt: now + 7 * 86400000 };
     });
   }
   if (data.action === 'disableInvite') {

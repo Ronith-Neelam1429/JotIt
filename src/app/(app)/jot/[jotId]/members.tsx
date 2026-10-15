@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { InvitationPanel } from '@/components/invitation-panel';
 import { ActionRow, Button, Sheet, ui } from '@/components/jot-controls';
 import { collaborationAction, collaborationError } from '@/lib/firebase-collaboration';
 import { displayName, type JotMember } from '@/lib/collaboration-model';
@@ -37,6 +38,7 @@ export default function MembersScreen() {
       {!jot ? <Text style={ui.description}>{isLoading ? 'Loading…' : 'This jot is no longer available.'}</Text> : <>
         <Text style={styles.title}>{jot.title}</Text>
         <Text style={ui.description}>{jot.collaboration ? `${jot.memberIds.length} ${jot.memberIds.length === 1 ? 'member' : 'members'} · Changes appear for everyone` : 'Invite someone to make this a shared jot.'}</Text>
+        {owner ? <InvitationPanel jot={jot} disabled={isSaving || busy} /> : null}
         {Object.entries(members).sort(([a, x], [b, y]) => Number(y.role === 'owner') - Number(x.role === 'owner') || x.joinedAt - y.joinedAt || a.localeCompare(b)).map(([id, member]) =>
           <ActionRow key={id} icon={member.name.slice(0, 1).toUpperCase()} title={`${member.name}${id === user?.uid ? ' (you)' : ''}`}
             description={`${member.role[0].toUpperCase() + member.role.slice(1)}${id === user?.uid && jot.collaboration ? ' · Edit your group name' : ''}`}

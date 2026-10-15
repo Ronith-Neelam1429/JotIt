@@ -31,9 +31,9 @@ export async function enableCollaboration(jot: Jot) {
 }
 export async function createInvitation(jot: Jot, role: 'editor' | 'viewer') {
   const key = await enableCollaboration(jot);
-  const result = await collaborationAction<{ token: string; expiresAt: number }>('createInvite', jot.id, { role,
+  const result = await collaborationAction<{ token: string; expiresAt: number; epoch: number }>('createInvite', jot.id, { role,
     encryptedPreview: await encryptJson({ title: jot.title }, key) });
-  return { url: invitationLink(jot.id, result.token, await key.encoded('base64')), expiresAt: result.expiresAt };
+  return { epoch: result.epoch, url: invitationLink(jot.id, result.token, await key.encoded('base64')), expiresAt: result.expiresAt };
 }
 export async function previewInvitation(jotId: string, token: string, encodedKey: string) {
   const result = await collaborationAction<{ encryptedPreview: string; role: 'editor' | 'viewer'; expiresAt: number; alreadyMember: boolean }>('previewInvite', jotId, { token });
