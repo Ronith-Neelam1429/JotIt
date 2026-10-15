@@ -1,4 +1,5 @@
-import { createContext, type PropsWithChildren, useContext, useEffect, useRef, useState } from 'react';
+import { loadSharedDrafts, saveSharedDrafts } from '@/lib/shared-drafts';
+import { createContext, type PropsWithChildren, useContext, useEffect, useCallback, useRef, useState } from 'react';
 import { Alert, AppState } from 'react-native';
 
 import { permanentlyDeleteJot, prepareJotSave, saveJot, saveSharedJot, subscribeToJots } from '@/lib/firebase-jots';
@@ -70,8 +71,16 @@ export function JotsProvider({ children }: PropsWithChildren) {
   }
   function reportSyncError(error: unknown) {
     console.error('Jot sync failed:', error);
-    setSyncError('Changes are kept in this session. Reconnect and tap Retry to sync them before signing out.');
+    setSyncError(error instanceof Error && /unlock|recover/i.test(error.message) ? error.message : 'Waiting to sync. Shared edits are backed up on this device. Reconnect and tap Retry.');
   }
+  const backupSharedDrafts = useCallback(() => {
+    if (!userId || !encryptionKeyRef.current) return;
+    const drafts = [...dirtyJots.current.values()].flatMap((local) => {
+      const base = dirtyBases.current.get(local.id);
+      return local.collaboration && base ? [{ base, local }] : [];
+    });
+    void saveSharedDrafts(userId, drafts, encryptionKeyRef.current).catch(() => setSyncError('Could not save a local backup. Keep JotIt open and retry sync.'));
+  }, [userId]);
   function persist(jot: Jot) {
     const key = encryptionKeyRef.current;
     if (!key) return;
@@ -93,6 +102,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
           dirtyJots.current.set(jot.id, display);
           dirtyBases.current.set(jot.id, saved);
         }
+        backupSharedDrafts();
         replaceJots(jotsRef.current.map((item) => item.id === jot.id ? display : item));
         setIsSaving(dirtyJots.current.size > 0);
         if (!dirtyJots.current.size) setSyncError(null);
@@ -122,6 +132,7 @@ export function JotsProvider({ children }: PropsWithChildren) {
   }
   function scheduleSave(jot: Jot, delay = 0) {
     dirtyJots.current.set(jot.id, jot);
+    if (jot.collaboration) backupSharedDrafts();
     setIsSaving(true);
     const timer = saveTimers.current.get(jot.id);
     if (timer) clearTimeout(timer);
@@ -152,19 +163,23 @@ export function JotsProvider({ children }: PropsWithChildren) {
     timers.forEach(clearTimeout);
     timers.clear();
     let unsubscribe: (() => void) | undefined;
-    if (userId) void getOrCreateJotEncryptionKey(userId).then((key) => {
+    if (userId) void getOrCreateJotEncryptionKey(userId).then(async (key) => {
       if (session.current !== generation) return;
       encryptionKeyRef.current = key;
-      unsubscribe = subscribeToJots(userId, key, (remote) => {
+      const recovered = await loadSharedDrafts(userId, key).catch(() => { reportSyncError(new Error('Could not recover local shared edits.')); return []; });
+      if (session.current !== generation) return;
+      recovered.forEach(({ base, local }) => { dirtyBases.current.set(local.id, base); dirtyJots.current.set(local.id, local); });
+      unsubscribe = subscribeToJots(userId, key, (remote, source) => {
         if (session.current !== generation) return;
         const merged = new Map(remote.filter((jot) => !deletingIds.current.has(jot.id)).map((jot) => [jot.id, jot]));
         dirtyJots.current.forEach((jot, id) => {
           const incoming = merged.get(id);
-          if (jot.collaboration && (!incoming || !canEditJot(incoming, userId))) {
+          if (jot.collaboration && ((!source.fromCache && !source.ids.includes(id)) || (incoming && !canEditJot(incoming, userId)))) {
             dirtyJots.current.delete(id); dirtyBases.current.delete(id); undoStates.current.delete(id);
             forgetSharedKey(userId, id);
             const timer = saveTimers.current.get(id); if (timer) clearTimeout(timer);
             saveTimers.current.delete(id);
+            backupSharedDrafts();
             setSyncError('Your access changed. Unsaved edits could not be sent to this jot.');
             return;
           }
@@ -200,13 +215,18 @@ export function JotsProvider({ children }: PropsWithChildren) {
       ++sessionRef.current;
       encryptionKeyRef.current = null;
     };
-  }, [userId]); // Account identity, not profile edits, owns the subscription.
+  }, [userId, backupSharedDrafts]); // Account identity, not profile edits, owns the subscription.
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') dirtyJots.current.forEach((jot) => scheduleSave(jot));
+      dirtyJots.current.forEach((jot) => scheduleSave(jot));
     });
-    return () => subscription.remove();
+    const retry = setInterval(() => {
+      if (AppState.currentState === 'active') dirtyJots.current.forEach((jot) => {
+        if (jot.collaboration && !saveChains.current.has(jot.id) && !saveTimers.current.has(jot.id)) persist(jot);
+      });
+    }, 15000);
+    return () => { subscription.remove(); clearInterval(retry); };
   });
 
   function edit(jotId: string, update: (jot: Jot) => Jot, delay = 0, record = true) {

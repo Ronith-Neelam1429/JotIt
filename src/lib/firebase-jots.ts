@@ -121,7 +121,7 @@ async function decryptStoredJot(
 export function subscribeToJots(
   userId: string,
   encryptionKey: JotEncryptionKey,
-  onJots: (jots: Jot[]) => void,
+  onJots: (jots: Jot[], source: { fromCache: boolean; ids: string[] }) => void,
   onError: (error: Error) => void,
 ) {
   const jotsQuery = query(
@@ -133,6 +133,7 @@ export function subscribeToJots(
   let active = true;
   const unsubscribe = onSnapshot(
     jotsQuery,
+    { includeMetadataChanges: true },
     (snapshot) => {
       const currentRevision = ++revision;
       void (async () => {
@@ -164,6 +165,7 @@ export function subscribeToJots(
           jots
             .filter((jot): jot is Jot => Boolean(jot))
             .sort((first, second) => second.updatedAt - first.updatedAt),
+          { fromCache: snapshot.metadata.fromCache, ids: snapshot.docs.map((item) => item.id) },
         );
       })().catch(onError);
     },

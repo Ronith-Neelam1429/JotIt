@@ -4,7 +4,7 @@ import { getFirebaseApp } from '@/lib/firebase';
 import { getFirebaseAuth } from '@/lib/firebase-auth';
 import { contentOf, type Jot } from '@/lib/jot-model';
 import { decryptJson, encryptJson, getOrCreateJotEncryptionKey } from '@/lib/jot-encryption';
-import { forgetSharedKey, sharedJotKey, wrapSharedKey } from '@/lib/collaboration-keys';
+import { forgetSharedKey, rememberSharedKey, sharedJotKey, wrapSharedKey } from '@/lib/collaboration-keys';
 import { displayName, invitationLink } from '@/lib/collaboration-model';
 
 export async function collaborationAction<T = { updated: boolean }>(action: string, jotId: string, values: Record<string, unknown> = {}) {
@@ -46,7 +46,7 @@ export async function acceptInvitation(jotId: string, token: string, encodedKey:
   const user = signedInUser(), personal = await getOrCreateJotEncryptionKey(user.uid);
   const key = await AESEncryptionKey.import(encodedKey, 'base64');
   await collaborationAction('acceptInvite', jotId, { token, name: displayName(name), envelope: await wrapSharedKey(key, personal) });
-  forgetSharedKey(user.uid, jotId);
+  await rememberSharedKey(user.uid, jotId, key);
 }
 export function collaborationError(error: unknown) {
   if (error instanceof Error && /unavailable|network|deadline/i.test(error.message)) return 'Connect to the internet and try again.';
