@@ -3,6 +3,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { onCall } from 'firebase-functions/v2/https';
 import { cleanName, fail, identifier, requireOwner, text } from './core.js';
 import { invitationAction } from './invitations.js';
+import { memberAction } from './members.js';
 initializeApp();
 
 export async function handleCollaboration(db, uid, data) {
@@ -27,6 +28,7 @@ export async function handleCollaboration(db, uid, data) {
     });
   }
   if (['createInvite', 'disableInvite', 'previewInvite', 'acceptInvite', 'declineInvite'].includes(data.action)) return invitationAction(db, ref, uid, data);
+  if (['setName', 'setRole', 'remove', 'leave', 'transfer'].includes(data.action)) return memberAction(db, ref, uid, data);
   fail('invalid-argument', 'Unknown collaboration action.');
 }
 export const collaboration = onCall({ region: 'us-central1', maxInstances: 5, timeoutSeconds: 30, memory: '256MiB' },
