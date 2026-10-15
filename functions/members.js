@@ -23,7 +23,7 @@ export async function memberAction(db, ref, uid, data) {
       if (members[target].role === permission) return { updated: true };
       members[target] = { ...members[target], role: permission };
       tx.update(ref, { 'collaboration.members': members });
-      activity(tx, ref, uid, actorName, `made ${members[target].name} an ${permission === 'editor' ? 'editor' : 'observer (viewer)'}`, now);
+      activity(tx, ref, uid, actorName, `made ${members[target].name} ${permission === 'editor' ? 'an editor' : 'a viewer'}`, now);
       notify(tx, db, target, ref.id, `${actorName} changed your role to ${permission}.`, now);
     } else if (data.action === 'transfer') {
       if (target === uid) fail('invalid-argument', 'Choose another member.');

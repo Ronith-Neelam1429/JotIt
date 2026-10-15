@@ -1,3 +1,4 @@
+import { Timestamp } from 'firebase-admin/firestore';
 import { activity, cleanName, fail, hashToken, newToken, notify, requireOwner, role, text } from './core.js';
 
 export async function invitationAction(db, ref, uid, data) {
@@ -15,7 +16,7 @@ export async function invitationAction(db, ref, uid, data) {
       const epoch = jot.linkEpoch + 1;
       tx.update(ref, { linkEpoch: epoch, lastInviteAt: now });
       tx.set(ref.collection('invitations').doc(id), { role: permission, encryptedPreview, epoch,
-        createdBy: uid, createdAt: now, expiresAt: now + 7 * 86400000, active: true });
+        createdBy: uid, createdAt: now, expiresAt: now + 7 * 86400000, expiresOn: Timestamp.fromMillis(now + 7 * 86400000), active: true });
       return { token, id, epoch, expiresAt: now + 7 * 86400000 };
     });
   }

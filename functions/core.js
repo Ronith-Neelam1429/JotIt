@@ -1,3 +1,4 @@
+import { Timestamp } from 'firebase-admin/firestore';
 import { createHash, randomBytes } from 'node:crypto';
 import { HttpsError } from 'firebase-functions/v2/https';
 export const fail = (code, message) => { throw new HttpsError(code, message); };
@@ -26,8 +27,8 @@ export function requireMember(jot, uid) {
   if (!jot.memberIds?.includes(uid)) fail('permission-denied', 'You no longer have access to this jot.');
 }
 export function activity(tx, ref, uid, name, description, now) {
-  tx.set(ref.collection('events').doc(), { actorId: uid, actorName: name, description, at: now });
+  tx.set(ref.collection('events').doc(), { actorId: uid, actorName: name, description, at: now, expiresAt: Timestamp.fromMillis(now + 90 * 86400000) });
 }
 export function notify(tx, db, uid, jotId, description, now) {
-  tx.set(db.collection('users').doc(uid).collection('notifications').doc(), { jotId, description, createdAt: now, read: false });
+  tx.set(db.collection('users').doc(uid).collection('notifications').doc(), { jotId, description, createdAt: now, read: false, expiresAt: Timestamp.fromMillis(now + 90 * 86400000) });
 }

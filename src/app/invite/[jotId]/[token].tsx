@@ -31,7 +31,7 @@ function InvitationContent({ invitation }: { invitation: { jotId: string; token:
     setBusy(true); setError('');
     try {
       if (accept) { await acceptInvitation(jotId, token, key, name || user?.displayName || 'Member'); router.replace({ pathname: '/jot/[jotId]', params: { jotId } }); }
-      else { await collaborationAction('declineInvite', jotId, { token }); setDeclined(true); }
+      else { await collaborationAction('declineInvite', jotId, { token }); setPending(null); setDeclined(true); }
     } catch (e) { setError(collaborationError(e)); }
     finally { setBusy(false); }
   }
@@ -57,7 +57,7 @@ function InvitationContent({ invitation }: { invitation: { jotId: string; token:
           {!preview.alreadyMember ? <Button label="Decline" disabled={busy} onPress={() => void respond(false)} /> : null}
         </> : !error ? <ActivityIndicator color="#25634D" /> : null}
       {error ? <><Text accessibilityLiveRegion="polite" style={ui.danger}>{error}</Text><Button label="Try again" disabled={busy} onPress={() => { setError(''); setPreview(null); setAttempt(attempt + 1); }} /></> : null}
-      {!declined ? <Button label="Not now" disabled={busy} onPress={() => router.replace('/')} /> : null}
+      {!declined ? <Button label="Not now" disabled={busy} onPress={() => { setPending(null); router.replace('/'); }} /> : null}
     </View>
   </ScrollView></SafeAreaView>;
 }
