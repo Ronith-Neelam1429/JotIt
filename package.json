@@ -7,6 +7,7 @@
     "@react-native-firebase/app": "^26.4.0",
     "@react-native-firebase/auth": "^26.4.0",
     "@react-native-firebase/firestore": "^26.4.0",
+    "@react-native-firebase/functions": "^26.4.0",
     "@react-native-firebase/storage": "^26.4.0",
     "expo": "~57.0.28",
     "expo-build-properties": "~57.0.22",
@@ -30,6 +31,7 @@
     "expo-system-ui": "~57.0.4",
     "expo-web-browser": "~57.0.3",
     "marked": "^18.1.1",
+    "qrcode": "^1.5.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
@@ -40,13 +42,17 @@
     "react-native-reanimated": "4.5.1",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
+    "react-native-svg": "15.15.4",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.10.1"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^6.0.0",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "~19.2.2",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~57.0.2",
+    "firebase": "^13.0.0",
     "typescript": "~6.0.3"
   },
   "scripts": {
