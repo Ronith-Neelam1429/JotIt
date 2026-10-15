@@ -4,11 +4,16 @@ import {
   doc,
   onSnapshot,
   query,
+  runTransaction,
   setDoc,
   Timestamp,
   where,
 } from '@react-native-firebase/firestore';
 
+import { sharedJotKey } from '@/lib/collaboration-keys';
+import { canEditJot, type Collaboration, type Activity } from '@/lib/collaboration-model';
+import { mergeJotChanges, activityDescription } from '@/lib/jot-merge';
+import { createId } from '@/lib/jot-model';
 import { getFirestoreDb } from '@/lib/firebase';
 import {
   decryptJson,
@@ -21,13 +26,14 @@ export type { Jot, JotEntry, JotKind } from '@/lib/jot-model';
 
 type EncryptedJotContent = Omit<
   Jot,
-  'createdAt' | 'id' | 'memberIds' | 'ownerId' | 'trashedAt' | 'updatedAt'
+  'createdAt' | 'id' | 'memberIds' | 'ownerId' | 'trashedAt' | 'updatedAt' | 'collaboration'
 >;
 
 type EncryptedFirestoreJot = {
   createdAt: number;
   encryptedPayload: string;
-  encryptionVersion: 1;
+  encryptionVersion: 1 | 2;
+  collaboration?: Collaboration;
   expiresAt: Timestamp | null;
   memberIds: string[];
   ownerId: string;
@@ -87,7 +93,7 @@ async function decryptStoredJot(
   const data = value as Partial<EncryptedFirestoreJot>;
 
   if (
-    data.encryptionVersion !== 1 ||
+    ![1, 2].includes(data.encryptionVersion ?? 0) ||
     typeof data.encryptedPayload !== 'string' ||
     typeof data.createdAt !== 'number' ||
     typeof data.updatedAt !== 'number'
@@ -102,6 +108,7 @@ async function decryptStoredJot(
   return {
     ...content,
     versions: parseVersions(decrypted.versions),
+    ...(data.collaboration ? { collaboration: data.collaboration, activity: Array.isArray(decrypted.activity) ? decrypted.activity.slice(-60) : [] } : {}),
     createdAt: data.createdAt,
     id,
     memberIds: Array.isArray(data.memberIds) ? data.memberIds : [],
@@ -131,11 +138,12 @@ export function subscribeToJots(
       void (async () => {
         const jots = await Promise.all(
           snapshot.docs.map(async (jotSnapshot) => {
+            try {
             const data = jotSnapshot.data();
             const encryptedJot = await decryptStoredJot(
               jotSnapshot.id,
               data,
-              encryptionKey,
+              data.encryptionVersion === 2 ? await sharedJotKey(jotSnapshot.id, userId, encryptionKey) : encryptionKey,
             );
             if (encryptedJot) return encryptedJot;
 
@@ -147,6 +155,7 @@ export function subscribeToJots(
               await encryptedJotData(legacyJot, encryptionKey),
             );
             return legacyJot;
+            } catch { onError(new Error('A jot could not be unlocked on this device. Ask its owner for a new invitation.')); return null; }
           }),
         );
 
@@ -167,6 +176,7 @@ export async function saveJot(
   jot: Jot,
   encryptionKey: JotEncryptionKey,
 ) {
+  if (jot.collaboration) throw new Error('Shared jots require a transactional save.');
   await setDoc(
     jotDocument(jot.id),
     await encryptedJotData(jot, encryptionKey),
@@ -174,10 +184,39 @@ export async function saveJot(
 }
 
 export async function prepareJotSave(jot: Jot, encryptionKey: JotEncryptionKey) {
+  if (jot.collaboration) throw new Error('Shared jots require a transactional save.');
   const data = await encryptedJotData(jot, encryptionKey);
   return () => setDoc(jotDocument(jot.id), data);
 }
 
 export function permanentlyDeleteJot(jotId: string) {
   return deleteDoc(jotDocument(jotId));
+}
+
+
+/** Online transaction: retry against the latest revision, applying only this edit's delta. */
+export async function saveSharedJot(base: Jot, local: Jot, userId: string, personalKey: JotEncryptionKey) {
+  const key = await sharedJotKey(local.id, userId, personalKey);
+  return runTransaction(getFirestoreDb(), async (transaction) => {
+    const ref = jotDocument(local.id);
+    const snapshot = await transaction.get(ref);
+    const remote = await decryptStoredJot(local.id, snapshot.data(), key);
+    if (!remote?.collaboration || !canEditJot(remote, userId)) throw new Error('Your editing access to this jot has changed.');
+    const merged = mergeJotChanges(base, local, remote);
+    const now = Date.now();
+    const event: Activity = { id: createId(), actorId: userId, actorName: remote.collaboration.members[userId].name,
+      description: activityDescription(base, local), at: now };
+    const recent = merged.activity?.at(-1);
+    // Coalesce consecutive typing saves by the same person into one quiet activity item.
+    merged.activity = recent?.actorId === userId && recent.description === event.description && now - recent.at < 30000
+      ? [...(merged.activity ?? []).slice(0, -1), { ...recent, at: now }] : [...(merged.activity ?? []), event].slice(-60);
+    merged.collaboration = { ...remote.collaboration, revision: remote.collaboration.revision + 1, lastEditedBy: userId, lastEditedAt: now };
+    transaction.update(ref, {
+      encryptedPayload: await encryptJson({ ...contentOf(merged), versions: merged.versions, activity: merged.activity }, key),
+      updatedAt: merged.updatedAt, collaboration: merged.collaboration,
+      trashedAt: merged.trashedAt ? Timestamp.fromMillis(merged.trashedAt) : null,
+      expiresAt: merged.trashedAt ? Timestamp.fromMillis(merged.trashedAt + TRASH_RETENTION_MS) : null,
+    });
+    return merged;
+  });
 }
