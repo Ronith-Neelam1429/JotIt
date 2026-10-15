@@ -56,6 +56,7 @@ export function JotTools({ jot, visible, onClose, onRename, onChangeKind, onTras
           }} />
         <ActionRow icon="↶" title="Deleted items" description={`${jot.deletedEntries.length} items available to restore`} onPress={() => open('deleted')} />
       </> : null}
+      {jot.collaboration ? <ActionRow icon="◷" title="Activity" description="See what changed and who helped" onPress={() => { onClose(); router.push({ pathname: '/jot/[jotId]/activity', params: { jotId: jot.id } }); }} /> : null}
       <ActionRow icon="↗" title="Share & export" description="Send a copy or save a file" onPress={() => { setExportError(''); open('export'); }} />
       <ActionRow icon="◷" title="Version history" description={`${jot.versions.length} saved versions`} onPress={() => { setSelectedVersion(null); open('history'); }} />
       <ActionRow icon="♲" title="Move to Trash" description="Recoverable for 30 days" danger onPress={onTrash} />

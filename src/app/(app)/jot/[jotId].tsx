@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { CollaboratorBar } from '@/components/collaborator-bar';
 import { FreeWriteEditor } from '@/components/free-write-editor';
 import { Button } from '@/components/jot-controls';
 import { JotTools } from '@/components/jot-tools';
@@ -336,6 +337,7 @@ export default function JotScreen() {
             title={jot.title}
           />
           {editBar}
+          <CollaboratorBar jot={jot} />
           <View style={styles.documentContent}>
             <Pressable
               accessibilityHint="Opens the rename form"
@@ -371,6 +373,7 @@ export default function JotScreen() {
         />
 
         {editBar}
+          <CollaboratorBar jot={jot} />
         <DraggableFlatList
           containerStyle={styles.list}
           contentContainerStyle={styles.content}
