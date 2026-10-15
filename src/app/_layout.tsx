@@ -1,4 +1,6 @@
-import { Stack } from 'expo-router';
+import { useEffect } from 'react';
+import { InvitationProvider, usePendingInvitation } from '@/providers/invitation-provider';
+import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -9,7 +11,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={styles.root}>
       <AuthProvider>
-        <RootNavigator />
+        <InvitationProvider><RootNavigator /></InvitationProvider>
       </AuthProvider>
     </GestureHandlerRootView>
   );
@@ -17,6 +19,13 @@ export default function RootLayout() {
 
 function RootNavigator() {
   const { isLoading, user } = useAuth();
+  const { pending, setPending } = usePendingInvitation();
+  useEffect(() => {
+    if (user && pending) {
+      setPending(null);
+      router.replace({ pathname: '/invite/[jotId]/[token]', params: pending });
+    }
+  }, [user, pending, setPending]);
 
   if (isLoading) {
     return (
@@ -31,6 +40,7 @@ function RootNavigator() {
     <>
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="invite/[jotId]/[token]" />
         <Stack.Protected guard={Boolean(user)}>
           <Stack.Screen name="(app)" />
         </Stack.Protected>
