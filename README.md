@@ -84,3 +84,16 @@ npx expo export --platform ios --platform android
 Use a current npm-installed Firebase CLI for deployment. The standalone CLI's bundled Node 20 runtime cannot load these Node 22 server dependencies. The emulator test runner preserves the project's Node executable so it also works with the standalone CLI.
 
 The emulator suite uses the isolated `demo-jotit` project. It verifies authenticated conversion, preview/accept/decline, viewer/editor boundaries, key privacy, stale-revision rejection, presence impersonation prevention, inbox privacy, link revocation/expiration, concurrent joins, removal, leaving, and ownership transfer. Mobile JavaScript bundle exports validate both platforms; a fresh native build and a two-device smoke test are still required before store distribution.
+
+### Fresh native development builds
+
+`eas.json` includes device development builds and an iOS Simulator profile. Sign in to your Expo account, then create the build you need:
+
+```sh
+npx eas-cli@latest login
+npx eas-cli@latest build --profile development --platform android
+npx eas-cli@latest build --profile simulator --platform ios
+# For physical iPhones, use --profile development --platform ios (Apple signing required).
+```
+
+Before distributing, test two signed-in devices: invite by link and QR; accept/decline; edit different items at once; edit the same writing and recover the retained version; demote an editor; disable a link; remove a member; leave; transfer ownership; and reconnect after a queued edit. Confirm notification delivery in the in-app inbox. The implementation session verified the backend and bundles, but could not run EAS native builds because the local EAS account was not signed in.
