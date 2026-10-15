@@ -1,3 +1,5 @@
+import { useAuth } from '@/providers/auth-provider';
+import { canEditJot } from '@/lib/collaboration-model';
 import { exportJot, shareJotCopy } from '@/lib/jot-sharing';
 import { router } from 'expo-router';
 import { useState } from 'react';
@@ -10,6 +12,9 @@ import { useJots } from '@/providers/jots-provider';
 export function JotTools({ jot, visible, onClose, onRename, onChangeKind, onTrash }: {
   jot: Jot; visible: boolean; onClose: () => void; onRename: () => void; onChangeKind: () => void; onTrash: () => void;
 }) {
+  const { user } = useAuth();
+  const editable = canEditJot(jot, user?.uid);
+  const owner = jot.ownerId === user?.uid;
   const { jots, restoreVersion, organizeJot, updateAppearance, pinJot, archiveJot, duplicateJot, completeAll, clearCompleted, restoreEntry } = useJots();
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
@@ -28,28 +33,28 @@ export function JotTools({ jot, visible, onClose, onRename, onChangeKind, onTras
   return <>
     <Sheet title="Jot options" visible={visible} onClose={onClose}>
       <ActionRow icon="♧" title={jot.collaboration ? 'People & invitations' : 'Collaborate'} description={jot.collaboration ? `${jot.memberIds.length} members` : 'Invite someone to this jot'} onPress={() => { onClose(); router.push({ pathname: '/jot/[jotId]/members', params: { jotId: jot.id } }); }} />
-      <ActionRow icon="✎" title="Rename" onPress={onRename} />
-      <ActionRow icon="◉" title="Color & icon" description="A little personality for your jot" onPress={() => open('appearance')} />
-      <ActionRow icon="#" title="Tags & folder" description={[jot.folder, ...jot.tags.map((tag) => `#${tag}`)].filter(Boolean).join(' · ') || 'Give everything a place'} onPress={() => {
+      <ActionRow icon="✎" disabled={!editable} title="Rename" onPress={onRename} />
+      <ActionRow icon="◉" disabled={!editable} title="Color & icon" description="A little personality for your jot" onPress={() => open('appearance')} />
+      <ActionRow icon="#" disabled={!editable} title="Tags & folder" description={[jot.folder, ...jot.tags.map((tag) => `#${tag}`)].filter(Boolean).join(' · ') || 'Give everything a place'} onPress={() => {
         setFolderDraft(jot.folder); setTagsDraft(jot.tags.join(', ')); open('organize');
       }} />
       {!jot.isTemplate ? <ActionRow icon="▤" title="Save as template" description="Reuse this structure with a fresh checklist" onPress={() => {
         duplicateJot(jot.id, true); onClose(); router.push('/templates');
       }} /> : null}
-      <ActionRow icon="★" title={jot.pinned ? 'Unpin jot' : 'Pin jot'} description="Keep it at the top of your jots" onPress={() => { pinJot(jot.id, !jot.pinned); onClose(); }} />
-      {!jot.isTemplate ? <ActionRow icon="▣" title={jot.archivedAt ? 'Move to your jots' : 'Archive jot'} description="Keep it safely, out of the way" onPress={() => {
+      <ActionRow icon="★" disabled={!editable} title={jot.pinned ? 'Unpin jot' : 'Pin jot'} description="Keep it at the top of your jots" onPress={() => { pinJot(jot.id, !jot.pinned); onClose(); }} />
+      {!jot.isTemplate ? <ActionRow icon="▣" disabled={!editable} title={jot.archivedAt ? 'Move to your jots' : 'Archive jot'} description="Keep it safely, out of the way" onPress={() => {
         archiveJot(jot.id, !jot.archivedAt); onClose(); router.replace(jot.archivedAt ? '/' : '/archive');
       }} /> : null}
       <ActionRow icon="⧉" title="Duplicate jot" description="Make an independent copy" onPress={() => {
         const copy = duplicateJot(jot.id); onClose(); router.push({ pathname: '/jot/[jotId]', params: { jotId: copy.id } });
       }} />
-      <ActionRow icon={jot.kind === 'list' ? 'Aa' : '☷'} title={`Switch to ${jot.kind === 'list' ? 'free write' : 'list'}`} onPress={onChangeKind} />
+      <ActionRow icon={jot.kind === 'list' ? 'Aa' : '☷'} disabled={!editable} title={`Switch to ${jot.kind === 'list' ? 'free write' : 'list'}`} onPress={onChangeKind} />
       {jot.kind === 'list' ? <>
         <View style={ui.divider} />
-        <ActionRow icon="✓" title="Mark all complete" disabled={!jot.entries.some((entry) => !entry.completed)}
+        <ActionRow icon="✓" title="Mark all complete" disabled={!editable || !jot.entries.some((entry) => !entry.completed)}
           onPress={() => { completeAll(jot.id); onClose(); }} />
         <ActionRow icon="⌫" title="Clear completed" description={`${jot.entries.filter((entry) => entry.completed).length} completed items`}
-          disabled={!jot.entries.some((entry) => entry.completed)} onPress={() => {
+          disabled={!editable || !jot.entries.some((entry) => entry.completed)} onPress={() => {
             onClose(); setTimeout(() => Alert.alert('Clear completed items?', 'You can bring them back from Deleted items.', [
               { text: 'Cancel', style: 'cancel' }, { text: 'Clear completed', onPress: () => clearCompleted(jot.id) },
             ]), 250);
@@ -59,7 +64,7 @@ export function JotTools({ jot, visible, onClose, onRename, onChangeKind, onTras
       {jot.collaboration ? <ActionRow icon="◷" title="Activity" description="See what changed and who helped" onPress={() => { onClose(); router.push({ pathname: '/jot/[jotId]/activity', params: { jotId: jot.id } }); }} /> : null}
       <ActionRow icon="↗" title="Share & export" description="Send a copy or save a file" onPress={() => { setExportError(''); open('export'); }} />
       <ActionRow icon="◷" title="Version history" description={`${jot.versions.length} saved versions`} onPress={() => { setSelectedVersion(null); open('history'); }} />
-      <ActionRow icon="♲" title="Move to Trash" description="Recoverable for 30 days" danger onPress={onTrash} />
+      <ActionRow icon="♲" disabled={!owner} title="Move to Trash" description="Recoverable for 30 days" danger onPress={onTrash} />
     </Sheet>
     <Sheet title="Share & export" visible={panel === 'export'} onClose={() => { if (!exporting) setPanel(null); }} description="Share a snapshot of this jot. Recipients can read the copy without access to your original or its history.">
       <ActionRow icon="↗" title="Share a copy" description="Open the system share sheet" disabled={exporting} onPress={() => void handleExport('share')} />
@@ -79,7 +84,7 @@ export function JotTools({ jot, visible, onClose, onRename, onChangeKind, onTras
             <Text style={styles.versionText}>{entry.completed ? '☑' : '☐'} {entry.text}{entry.quantity ? ` · ${entry.quantity}` : ''}</Text>
             {entry.note ? <Text style={ui.description}>{entry.note}</Text> : null}
           </View>)}
-        <Button label="Restore this version" selected onPress={() => {
+        <Button disabled={!editable} label="Restore this version" selected onPress={() => {
           setPanel(null); setTimeout(() => Alert.alert('Restore this version?', 'Your current version will stay in history, so you can return to it.', [
             { text: 'Cancel', style: 'cancel' }, { text: 'Restore', onPress: () => restoreVersion(jot.id, selectedVersion.id) },
           ]), 250);
@@ -101,23 +106,23 @@ export function JotTools({ jot, visible, onClose, onRename, onChangeKind, onTras
       <Text style={ui.description}>Up to 12 tags, 30 characters each.</Text>
       <View style={ui.row}>{[...new Set(jots.flatMap((item) => item.tags))].sort().slice(0, 24).map((tag) => <Button key={tag} label={`#${tag}`}
         onPress={() => setTagsDraft((current) => [...new Set([...current.split(',').map((value) => value.trim()).filter(Boolean), tag])].join(', '))} />)}</View>
-      <Button label="Save organization" selected onPress={() => { organizeJot(jot.id, folderDraft, tagsDraft.split(',')); setPanel(null); }} />
+      <Button disabled={!editable} label="Save organization" selected onPress={() => { organizeJot(jot.id, folderDraft, tagsDraft.split(',')); setPanel(null); }} />
     </Sheet>
     <Sheet title="Deleted items" visible={panel === 'deleted'} onClose={() => setPanel(null)} description="Tap an item to restore it to the list.">
       {jot.deletedEntries.length ? [...jot.deletedEntries].reverse().map((entry) =>
-        <ActionRow key={entry.id} icon="↶" title={entry.text} description={[entry.quantity, entry.note, 'Restore item'].filter(Boolean).join(' · ')}
+        <ActionRow disabled={!editable} key={entry.id} icon="↶" title={entry.text} description={[entry.quantity, entry.note, 'Restore item'].filter(Boolean).join(' · ')}
           onPress={() => restoreEntry(jot.id, entry.id)} />) : <Text style={ui.description}>No deleted items. Anything you delete or clear will appear here.</Text>}
     </Sheet>
     <Sheet title="Color & icon" visible={panel === 'appearance'} onClose={() => setPanel(null)} description="Changes save as you choose.">
       <View style={[styles.preview, { backgroundColor: jot.accent }]}><Text style={styles.previewIcon}>{jot.emoji}</Text><Text style={styles.previewTitle}>{jot.title}</Text></View>
       <Text style={ui.label}>COLOR</Text>
-      <View style={ui.row}>{ACCENTS.map(({ name, color }) => <Pressable key={color} accessibilityRole="radio" accessibilityLabel={name}
+      <View style={ui.row}>{ACCENTS.map(({ name, color }) => <Pressable key={color} disabled={!editable} accessibilityRole="radio" accessibilityLabel={name}
         accessibilityState={{ selected: jot.accent === color }} onPress={() => updateAppearance(jot.id, color, jot.emoji)}
         style={[styles.swatch, { backgroundColor: color }, jot.accent === color && styles.selected]}>
         {jot.accent === color ? <Text style={styles.check}>✓</Text> : null}
       </Pressable>)}</View>
       <Text style={ui.label}>ICON</Text>
-      <View style={ui.row}>{JOT_ICONS.map((icon) => <Pressable key={icon} accessibilityLabel={`Icon ${icon}`} accessibilityRole="radio"
+      <View style={ui.row}>{JOT_ICONS.map((icon) => <Pressable key={icon} disabled={!editable} accessibilityLabel={`Icon ${icon}`} accessibilityRole="radio"
         accessibilityState={{ selected: jot.emoji === icon }} onPress={() => updateAppearance(jot.id, jot.accent, icon)}
         style={[styles.swatch, { backgroundColor: '#FFF' }, jot.emoji === icon && styles.selected]}><Text style={styles.icon}>{icon}</Text></Pressable>)}</View>
     </Sheet>

@@ -115,11 +115,13 @@ export default function HomeScreen() {
   }
 
   function beginSelection(jotId: string) {
+    if (allJots.find((jot) => jot.id === jotId)?.ownerId !== user?.uid) return;
     setIsSelecting(true);
     setSelectedJotIds(new Set([jotId]));
   }
 
   function toggleSelection(jotId: string) {
+    if (allJots.find((jot) => jot.id === jotId)?.ownerId !== user?.uid) return;
     setSelectedJotIds((currentIds) => {
       const nextIds = new Set(currentIds);
       if (nextIds.has(jotId)) nextIds.delete(jotId);
@@ -269,7 +271,7 @@ export default function HomeScreen() {
                       <Text style={styles.jotType}>
                         {jot.archivedAt ? 'Archived · ' : ''}{jot.kind === 'list' ? 'List' : 'Free write'}
                       </Text>
-                      <Text style={styles.itemCount}>{getJotMeta(jot)}</Text>
+                      <Text style={styles.itemCount}>{getJotMeta(jot)}{jot.collaboration ? ` · ${jot.memberIds.length} members` : ''}</Text>
                     </View>
                   </View>
                   {isSelecting ? (

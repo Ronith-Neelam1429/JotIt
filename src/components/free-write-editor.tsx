@@ -27,7 +27,7 @@ const FORMATS: { action: FormatAction; label: string; name: string }[] = [
   { action: 'number', label: '1. List', name: 'Numbered list' }, { action: 'checkbox', label: '☐', name: 'Checkbox' },
   { action: 'link', label: '↗', name: 'Link' }, { action: 'highlight', label: 'Highlight', name: 'Highlight' },
 ];
-export function FreeWriteEditor({ content, onChange }: { content: string; onChange: (value: string) => void }) {
+export function FreeWriteEditor({ content, onChange, readOnly = false }: { content: string; onChange: (value: string) => void; readOnly?: boolean }) {
   const [preview, setPreview] = useState(false);
   const [selection, setSelection] = useState<Selection>({ start: 0, end: 0 });
   const [linkOpen, setLinkOpen] = useState(false);
@@ -39,6 +39,7 @@ export function FreeWriteEditor({ content, onChange }: { content: string; onChan
     setSelection(result.selection);
     requestAnimationFrame(() => input.current?.focus());
   }
+  if (readOnly) return <ScrollView style={styles.previewScroll}><FormattedDocument content={content} /></ScrollView>;
   return <View style={styles.editor}>
     <View style={styles.modeRow}><Button label="Write" selected={!preview} onPress={() => setPreview(false)} />
       <Button label="Preview" selected={preview} onPress={() => setPreview(true)} />

@@ -15,6 +15,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAuth } from '@/providers/auth-provider';
+import { canEditJot } from '@/lib/collaboration-model';
 import { CollaboratorBar } from '@/components/collaborator-bar';
 import { FreeWriteEditor } from '@/components/free-write-editor';
 import { Button } from '@/components/jot-controls';
@@ -25,12 +27,13 @@ import { type JotKind, useJots } from '@/providers/jots-provider';
 const JOT_TITLE_MAX_LENGTH = 100;
 
 type JotHeaderProps = {
+  editable: boolean;
   onMore: () => void;
   onRename: () => void;
   title: string;
 };
 
-function JotHeader({ onMore, onRename, title }: JotHeaderProps) {
+function JotHeader({ editable, onMore, onRename, title }: JotHeaderProps) {
   return (
     <View style={styles.header}>
       <Pressable
@@ -42,7 +45,8 @@ function JotHeader({ onMore, onRename, title }: JotHeaderProps) {
         <Text style={styles.backIcon}>‹</Text>
       </Pressable>
       <Pressable
-        accessibilityHint="Opens the rename form"
+        disabled={!editable}
+        accessibilityHint={editable ? "Opens the rename form" : undefined}
         accessibilityLabel={`${title}. Rename jot`}
         accessibilityRole="button"
         onPress={onRename}
@@ -149,6 +153,7 @@ function RenameJotModal({
 }
 
 export default function JotScreen() {
+  const { user } = useAuth();
   const { jotId } = useLocalSearchParams<{ jotId: string }>();
   const {
     undo, redo, canUndo, canRedo, isSaving, syncError, retrySync,
@@ -171,6 +176,7 @@ export default function JotScreen() {
   const [renameDraft, setRenameDraft] = useState('');
   const [renameError, setRenameError] = useState('');
   const jot = jots.find((candidate) => candidate.id === jotId);
+  const editable = Boolean(jot && canEditJot(jot, user?.uid));
 
   function handleAddEntry() {
     if (!jot || !draft.trim()) return;
@@ -189,7 +195,7 @@ export default function JotScreen() {
   }
 
   function openRename() {
-    if (!jot) return;
+    if (!jot || !editable) return;
     setRenameDraft(jot.title);
     setRenameError('');
     setIsRenameOpen(true);
@@ -292,9 +298,9 @@ export default function JotScreen() {
   }
 
   const editBar = <View style={styles.editBar}>
-    <Button label="↶ Undo" disabled={!canUndo(jot.id)} onPress={() => undo(jot.id)} />
-    <Button label="↷ Redo" disabled={!canRedo(jot.id)} onPress={() => redo(jot.id)} />
-    {syncError ? <Button label="Retry sync" danger onPress={retrySync} /> : <Text accessibilityLiveRegion="polite" style={styles.saveStatus}>{isSaving ? 'Syncing…' : 'Saved'}</Text>}
+    <Button label="↶ Undo" disabled={!editable || !canUndo(jot.id)} onPress={() => undo(jot.id)} />
+    <Button label="↷ Redo" disabled={!editable || !canRedo(jot.id)} onPress={() => redo(jot.id)} />
+    {syncError ? <Button label="Retry sync" danger onPress={retrySync} /> : <Text accessibilityLiveRegion="polite" style={styles.saveStatus}>{!editable ? 'View only' : isSaving ? 'Syncing…' : 'Saved'}</Text>}
   </View>;
   const renameModal = (
     <RenameJotModal
@@ -331,7 +337,7 @@ export default function JotScreen() {
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardView}>
-          <JotHeader
+          <JotHeader editable={editable}
             onMore={() => setIsOptionsOpen(true)}
             onRename={openRename}
             title={jot.title}
@@ -350,7 +356,7 @@ export default function JotScreen() {
             <Text style={styles.documentMeta}>
               {jot.isTemplate ? 'Template · ' : jot.archivedAt ? 'Archived · ' : ''}Free write · {wordCount} {wordCount === 1 ? 'word' : 'words'}
             </Text>
-            <FreeWriteEditor content={jot.documentContent} onChange={(content) => updateDocument(jot.id, content)} />
+            <FreeWriteEditor readOnly={!editable} content={jot.documentContent} onChange={(content) => updateDocument(jot.id, content)} />
           </View>
         </KeyboardAvoidingView>
         {optionsModal}
@@ -366,7 +372,7 @@ export default function JotScreen() {
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}>
-        <JotHeader
+        <JotHeader editable={editable}
           onMore={() => setIsOptionsOpen(true)}
           onRename={openRename}
           title={jot.title}
@@ -410,10 +416,10 @@ export default function JotScreen() {
               </Text>
             </View>
           )}
-          onDragEnd={({ data }) => reorderEntries(jot.id, data.map((entry) => entry.id))}
+          onDragEnd={({ data }) => { if (editable) reorderEntries(jot.id, data.map((entry) => entry.id)); }}
           renderItem={({ drag, isActive, item }) => (
             <ScaleDecorator activeScale={1.015}>
-              <JotEntryRow
+              <JotEntryRow readOnly={!editable}
                 entry={item}
                 isActive={isActive}
                 onDelete={() => confirmRemoveEntry(item.id, item.text)}
@@ -427,7 +433,7 @@ export default function JotScreen() {
           style={styles.list}
         />
 
-        <View style={styles.composer}>
+        {editable ? <View style={styles.composer}>
           <TextInput
             accessibilityLabel="New jot entry"
             maxLength={500}
@@ -451,7 +457,7 @@ export default function JotScreen() {
             ]}>
             <Text style={styles.addButtonLabel}>↑</Text>
           </Pressable>
-        </View>
+        </View> : null}
       </KeyboardAvoidingView>
       {optionsModal}
       {renameModal}

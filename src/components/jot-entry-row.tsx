@@ -21,6 +21,7 @@ const MENU_WIDTH = 176;
 const SCREEN_EDGE_PADDING = 12;
 
 type JotEntryRowProps = {
+  readOnly?: boolean;
   entry: JotEntry;
   isActive: boolean;
   onDelete: () => void;
@@ -30,6 +31,7 @@ type JotEntryRowProps = {
 };
 
 export function JotEntryRow({
+  readOnly = false,
   entry,
   isActive,
   onDelete,
@@ -84,6 +86,14 @@ export function JotEntryRow({
     setIsRenameOpen(false);
   }
 
+  if (readOnly) return <View style={styles.entryCard}>
+    <View style={styles.entryContent}><Text accessibilityLabel={entry.completed ? 'Completed' : 'Incomplete'} style={{ color: '#25634D', fontSize: 22 }}>{entry.completed ? '☑' : '☐'}</Text>
+      <View style={styles.entryCopy}><Text selectable style={[styles.entryText, entry.completed && styles.entryTextCompleted]}>{entry.text}</Text>
+        {entry.quantity ? <Text style={styles.quantity}>Qty · {entry.quantity}</Text> : null}
+        {entry.note ? <Text selectable style={styles.note}>{entry.note}</Text> : null}
+      </View>
+    </View>
+  </View>;
   return (
     <>
       <Swipeable

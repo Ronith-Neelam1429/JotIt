@@ -108,7 +108,7 @@ export default function TrashScreen() {
                   <View style={styles.actions}>
                     <Pressable
                       accessibilityRole="button"
-                      disabled={isBusy}
+                      disabled={isBusy || !canPermanentlyDelete}
                       onPress={() => void handleRestore(jot.id)}
                       style={({ pressed }) => [styles.restoreButton, pressed && styles.pressed]}>
                       <Text style={styles.restoreLabel}>Restore</Text>

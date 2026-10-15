@@ -1,3 +1,5 @@
+import { useAuth } from '@/providers/auth-provider';
+import { canEditJot } from '@/lib/collaboration-model';
 import { router } from 'expo-router';
 import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -5,6 +7,7 @@ import { ActionRow, Button, ui } from '@/components/jot-controls';
 import { useJots } from '@/providers/jots-provider';
 
 export default function ArchiveScreen() {
+  const { user } = useAuth();
   const { jots, archiveJot, isLoading, syncError, retrySync } = useJots();
   const archived = jots.filter((jot) => jot.archivedAt && !jot.isTemplate).sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0));
   return <SafeAreaView style={styles.screen}>
@@ -23,7 +26,7 @@ export default function ArchiveScreen() {
       renderItem={({ item }) => <View style={styles.card}>
         <ActionRow icon={item.emoji} title={item.title} description={item.kind === 'list' ? `${item.entries.length} items` : 'Free write'}
           onPress={() => router.push({ pathname: '/jot/[jotId]', params: { jotId: item.id } })} />
-        <Button label="Move to your jots" onPress={() => archiveJot(item.id, false)} />
+        <Button disabled={!canEditJot(item, user?.uid)} label="Move to your jots" onPress={() => archiveJot(item.id, false)} />
       </View>} />
   </SafeAreaView>;
 }
