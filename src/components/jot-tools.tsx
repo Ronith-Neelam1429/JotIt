@@ -26,7 +26,8 @@ export function JotTools({ jot, visible, onClose, onRename, onChangeKind, onTras
     finally { setExporting(false); }
   }
   return <>
-    <Sheet title="Make it yours" visible={visible} onClose={onClose}>
+    <Sheet title="Jot options" visible={visible} onClose={onClose}>
+      <ActionRow icon="♧" title={jot.collaboration ? 'People & invitations' : 'Collaborate'} description={jot.collaboration ? `${jot.memberIds.length} members` : 'Invite someone to this jot'} onPress={() => { onClose(); router.push({ pathname: '/jot/[jotId]/members', params: { jotId: jot.id } }); }} />
       <ActionRow icon="✎" title="Rename" onPress={onRename} />
       <ActionRow icon="◉" title="Color & icon" description="A little personality for your jot" onPress={() => open('appearance')} />
       <ActionRow icon="#" title="Tags & folder" description={[jot.folder, ...jot.tags.map((tag) => `#${tag}`)].filter(Boolean).join(' · ') || 'Give everything a place'} onPress={() => {
