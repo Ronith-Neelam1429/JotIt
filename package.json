@@ -61,7 +61,9 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "test": "node --test tests/*.test.mjs && npm --prefix functions test",
+    "test:collaboration": "node scripts/test-collaboration.mjs"
   },
   "private": true
 }
