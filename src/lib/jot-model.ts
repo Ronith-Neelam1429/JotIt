@@ -1,3 +1,5 @@
+import type { Activity, Collaboration } from './collaboration-model';
+
 export type JotKind = 'document' | 'list';
 export type JotEntry = {
   completed: boolean;
@@ -31,6 +33,8 @@ export type Jot = JotContent & {
   memberIds: string[];
   ownerId: string;
   versions: JotVersion[];
+  collaboration?: Collaboration;
+  activity?: Activity[];
 };
 
 export const ACCENTS = [
