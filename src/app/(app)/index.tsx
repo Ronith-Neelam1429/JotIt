@@ -1,3 +1,4 @@
+import { NotificationButton } from '@/components/notification-button';
 import { Link, router } from 'expo-router';
 import { useDeferredValue, useMemo, useState } from 'react';
 import {
@@ -164,6 +165,7 @@ export default function HomeScreen() {
             <Text style={styles.brandGridIcon}>▦</Text>
           </View>
           <Text style={styles.brand}>JotIt</Text>
+          <NotificationButton />
           <Link href="/account" asChild>
             <Pressable
               accessibilityLabel="Open account settings"
